@@ -65,7 +65,7 @@ async function serveFile(res, base, rel) {
     send(res, 404, { error: 'not found' });
     return;
   }
-  res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
+  res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
   createReadStream(file).pipe(res);
 }
 

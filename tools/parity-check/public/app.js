@@ -45,7 +45,7 @@ function historyItems(list) {
       <span class="hi-main">
         <span class="hi-urls">${esc(r.original)}<br><span class="muted">→ ${esc(r.migrated)}</span></span>
         <span class="hi-meta">${new Date(r.created).toLocaleString()} · ${r.widths.join(', ')}px
-          · <b class="sev-high">${r.summary?.high ?? 0}</b> / <b class="sev-medium">${r.summary?.medium ?? 0}</b> / <b class="sev-low">${r.summary?.low ?? 0}</b></span>
+          · <b class="txt-high">${r.summary?.high ?? 0}</b> / <b class="txt-medium">${r.summary?.medium ?? 0}</b> / <b class="txt-low">${r.summary?.low ?? 0}</b></span>
       </span>
     </a>`).join('');
 }
@@ -248,43 +248,82 @@ function issueKey(i) {
   return [i.category, i.property, i.fix?.selector || i.m?.selector || i.o?.selector || '', i.title.replace(/\d+(\.\d+)?px/g, '#')].join('|');
 }
 
-function fixHtml(fix) {
-  if (!fix) return '';
-  const file = fix.file ? `<span class="file ${fix.exists === false ? 'new' : ''}" title="${fix.exists === false ? 'File does not exist yet' : ''}">${esc(fix.file)}${fix.exists === false ? ' (new)' : ''}</span>` : '';
-  const code = fix.css ? `<div class="code"><pre>${esc(fix.css)}</pre><button type="button" class="btn tiny copy" data-copy="${esc(fix.css)}">Copy</button></div>` : '';
-  const note = fix.note ? `<p class="note">${esc(fix.note)}</p>` : '';
-  if (!file && !code && !note) return '';
-  return `<div class="fix"><div class="fix-head">Recommended fix ${file}</div>${code}${note}</div>`;
-}
-
-function valueHtml(v, swatch) {
-  if (!v) return '<span class="muted">–</span>';
-  return `${swatch ? `<i class="sw" style="background:${esc(swatch)}"></i>` : ''}<code>${esc(v)}</code>`;
-}
-
-function issueCard(i) {
-  return `<article class="issue sev-${i.severity}" data-id="${esc(i.id)}" tabindex="0">
-    <header>
-      <span class="num">${i.n}</span>
-      <span class="badge ${i.severity}">${i.severity}</span>
-      <span class="cat">${CATEGORY_LABEL[i.category] || i.category}</span>
-      ${i.count > 1 ? `<span class="count">×${i.count}</span>` : ''}
-    </header>
-    <h3>${esc(i.title)}</h3>
-    <p class="detail">${esc(i.detail)}</p>
-    <dl class="values">
-      <dt>Original</dt><dd>${valueHtml(i.ov, i.swatch?.[0])}</dd>
-      <dt>Migrated</dt><dd>${valueHtml(i.mv, i.swatch?.[1])}</dd>
-      ${i.m?.selector ? `<dt>Element</dt><dd><code class="sel">${esc(i.m.selector)}</code></dd>` : ''}
-    </dl>
-    ${fixHtml(i.fix)}
-  </article>`;
-}
-
 function rectsFor(issue, side) {
   if (side === 'o') return (issue.oRects?.length ? issue.oRects : [issue.o?.rect]).filter(Boolean);
   return (issue.m?.rects?.length ? issue.m.rects : [issue.m?.rect]).filter(Boolean);
 }
+
+/**
+ * Close-up of one screenshot around the issue's element. Pure CSS cropping:
+ * percentages for x/width, margin/padding percentages (relative to width) for y/height.
+ */
+function cropHtml(report, result, issue, side) {
+  const label = side === 'o' ? 'Original' : 'Migrated';
+  const rects = rectsFor(issue, side);
+  if (!rects.length) {
+    return `<figure class="crop ${side}"><figcaption>${label}</figcaption>
+      <div class="crop-empty">${side === 'o' ? 'Not on the original page' : 'Not on the migrated page'}</div></figure>`;
+  }
+  const W = result.width;
+  const [r] = rects;
+  const pad = 24;
+  const minW = Math.min(W, 360);
+  let cw = Math.min(W, Math.max(minW, r.w + pad * 2));
+  let cx = Math.max(0, Math.min(W - cw, r.x + r.w / 2 - cw / 2));
+  if (r.w + pad * 2 > W) { cx = 0; cw = W; }
+  const cy = Math.max(0, r.y - pad);
+  const ch = Math.max(80, Math.min(r.h + pad * 2, cw * 0.75)); // tall elements: show the top
+  const pctW = (v) => `${(v / cw) * 100}%`;
+  const boxes = rects.filter((q) => q.y < cy + ch && q.y + q.h > cy).slice(0, 6).map((q, k) => `<span class="crop-box ${k ? 'also' : ''} ${side === 'm' && issue.m?.expected ? 'expected' : ''}"
+      style="left:${pctW(q.x - cx)};width:${pctW(q.w)};margin-top:${pctW(q.y - cy)};padding-bottom:${pctW(q.h)}"></span>`).join('');
+  const src = `/reports/${report.id}/${result.shots[side]}`;
+  return `<figure class="crop ${side}"><figcaption>${label}</figcaption>
+    <div class="crop-view" style="aspect-ratio:${cw} / ${ch}">
+      <div class="crop-inner" style="left:${pctW(-cx)};width:${pctW(W)};margin-top:${pctW(-cy)}"><img src="${src}" alt="" loading="lazy"></div>
+      <div class="crop-boxes">${boxes}</div>
+    </div></figure>`;
+}
+
+function fixHtml(fix) {
+  if (!fix) return '';
+  const file = fix.file ? `<code class="file ${fix.exists === false ? 'new' : ''}">${esc(fix.file)}${fix.exists === false ? ' · new file' : ''}</code>` : '';
+  const code = fix.css ? `<div class="code"><pre>${esc(fix.css)}</pre><button type="button" class="btn tiny copy" data-copy="${esc(fix.css)}">Copy</button></div>` : '';
+  const note = fix.note ? `<p class="note">${esc(fix.note)}</p>` : '';
+  if (!file && !code && !note) return '';
+  return `<section class="fix"><h4>How to fix ${file}</h4>${code}${note}</section>`;
+}
+
+function compareHtml(i) {
+  if (!i.ov && !i.mv) return '';
+  const cell = (v, sw) => (v ? `${sw ? `<i class="sw" style="background:${esc(sw)}"></i>` : ''}<code>${esc(v)}</code>` : '<span class="muted">–</span>');
+  return `<div class="compare">
+    <div class="cmp o"><span>Original</span>${cell(i.ov, i.swatch?.[0])}</div>
+    <div class="cmp-arrow" aria-hidden="true">→</div>
+    <div class="cmp m"><span>Migrated</span>${cell(i.mv, i.swatch?.[1])}</div>
+  </div>`;
+}
+
+function issueBody(report, result, i) {
+  const hasRect = rectsFor(i, 'o').length || rectsFor(i, 'm').length;
+  return `<p class="detail">${esc(i.detail)}</p>
+    ${hasRect ? `<div class="crops">${cropHtml(report, result, i, 'o')}${cropHtml(report, result, i, 'm')}</div>` : ''}
+    ${compareHtml(i)}
+    ${i.m?.selector ? `<p class="where"><span>Element</span><code>${esc(i.m.selector)}</code></p>` : ''}
+    ${fixHtml(i.fix)}`;
+}
+
+function issueRow(i) {
+  return `<article class="issue sev-${i.severity}" data-id="${esc(i.id)}">
+    <button type="button" class="issue-row" aria-expanded="false">
+      <span class="pin-ref">${i.n}</span>
+      <span class="issue-title">${esc(i.title)}</span>
+      <span class="cat-tag">${CATEGORY_LABEL[i.category] || i.category}${i.count > 1 ? ` · ${i.count}×` : ''}</span>
+    </button>
+    <div class="issue-body"></div>
+  </article>`;
+}
+
+const SEV_RANK = { high: 3, medium: 2, low: 1 };
 
 class Viewer {
   constructor(root, report, result, onSelect) {
@@ -293,41 +332,61 @@ class Viewer {
     this.result = result;
     this.onSelect = onSelect;
     this.mode = 'side';
-    this.showMarkers = true;
+    this.showPins = true;
     this.zoom = 'fit';
     this.selected = null;
-    this.visibleIds = new Set(result.issues.map((i) => i.id));
+    this.order = result.issues.map((i) => i.id);
+    this.visibleIds = new Set(this.order);
     this.render();
   }
 
   src(kind) { return `/reports/${this.report.id}/${this.result.shots[kind]}`; }
 
+  issue(id) { return this.result.issues.find((i) => i.id === id); }
+
   render() {
     const r = this.result;
+    const titles = {
+      overlay: 'Migrated on top of original', swipe: 'Original ◀ drag ▶ Migrated', diff: 'Pixels that differ are red',
+    };
     this.root.innerHTML = `
       <div class="viewer-bar">
-        <div class="seg" role="tablist">
+        <div class="seg" role="tablist" aria-label="View mode">
           ${[['side', 'Side by side'], ['overlay', 'Overlay'], ['swipe', 'Swipe'], ['diff', 'Pixel diff']].map(([k, l]) => `<button type="button" data-mode="${k}" class="${this.mode === k ? 'on' : ''}">${l}</button>`).join('')}
         </div>
         <label class="ctl" data-for="overlay">Opacity <input type="range" id="opacity" min="0" max="100" value="50"></label>
         <label class="ctl" data-for="swipe">Position <input type="range" id="swipe" min="0" max="100" value="50"></label>
-        <label class="ctl"><input type="checkbox" id="markers" ${this.showMarkers ? 'checked' : ''}> Markers</label>
-        <label class="ctl" data-for="side"><input type="checkbox" id="sync" checked> Sync scroll</label>
-        <select id="zoom" class="ctl"><option value="fit">Fit width</option><option value="1">100%</option><option value="0.5">50%</option></select>
+        <div class="nav-issues">
+          <button type="button" class="btn tiny" id="prev" title="Previous issue (←)">‹ Prev</button>
+          <span id="nav-pos" class="muted"></span>
+          <button type="button" class="btn tiny" id="next" title="Next issue (→)">Next ›</button>
+        </div>
+        <label class="ctl"><input type="checkbox" id="pins" ${this.showPins ? 'checked' : ''}> Pins</label>
+        <select id="zoom" class="ctl" aria-label="Zoom"><option value="fit">Fit</option><option value="1">100%</option><option value="0.5">50%</option></select>
       </div>
       <div class="stage mode-${this.mode}">
-        ${this.mode === 'side' ? `
-          <div class="pane" data-side="o"><div class="pane-title">Original · ${r.width}px${r.page.o.truncated ? ' · truncated' : ''}</div><div class="scroller"><div class="canvas"><img src="${this.src('o')}" alt="Original at ${r.width}px"><div class="marks"></div></div></div></div>
-          <div class="pane" data-side="m"><div class="pane-title">Migrated · ${r.width}px${r.page.m.truncated ? ' · truncated' : ''}</div><div class="scroller"><div class="canvas"><img src="${this.src('m')}" alt="Migrated at ${r.width}px"><div class="marks"></div></div></div></div>`
-    : `
-          <div class="pane single" data-side="m"><div class="pane-title">${{ overlay: 'Migrated over original', swipe: 'Original | Migrated', diff: 'Changed pixels (red), with hotspots' }[this.mode]}</div><div class="scroller"><div class="canvas">
-            ${this.mode === 'diff' ? `<img src="${this.src('d')}" alt="Pixel diff">` : `<img src="${this.src('o')}" alt="Original"><img class="top" src="${this.src('m')}" alt="Migrated">`}
-            ${this.mode === 'swipe' ? '<div class="swipe-line"></div>' : ''}
-            <div class="marks"></div></div></div></div>`}
+        ${this.mode === 'side' ? ['o', 'm'].map((s) => `
+          <div class="pane" data-side="${s}">
+            <div class="pane-title ${s}"><b>${s === 'o' ? 'Original' : 'Migrated'}</b><span>${r.width}px${r.page[s].truncated ? ' · truncated' : ''}</span></div>
+            <div class="scroller"><div class="canvas"><img src="${this.src(s)}" alt="${s === 'o' ? 'Original' : 'Migrated'} at ${r.width}px"><div class="marks"></div></div></div>
+          </div>`).join('') : `
+          <div class="pane single" data-side="m">
+            <div class="pane-title"><b>${titles[this.mode]}</b><span>${r.width}px</span></div>
+            <div class="scroller"><div class="canvas">
+              ${this.mode === 'diff' ? `<img src="${this.src('d')}" alt="Pixel diff">` : `<img src="${this.src('o')}" alt="Original"><img class="top" src="${this.src('m')}" alt="Migrated">`}
+              ${this.mode === 'swipe' ? '<div class="swipe-line"></div>' : ''}
+              <div class="marks"></div></div></div>
+          </div>`}
       </div>`;
-    this.root.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { this.mode = b.dataset.mode; this.render(); }));
+    this.root.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+      this.mode = b.dataset.mode;
+      this.render();
+      if (this.selected) setTimeout(() => this.select(this.selected), 50);
+    }));
     this.root.querySelectorAll('.ctl[data-for]').forEach((c) => { c.hidden = c.dataset.for !== this.mode; });
-    this.root.querySelector('#markers').addEventListener('change', (e) => { this.showMarkers = e.target.checked; this.drawMarks(); });
+    this.root.querySelector('#pins').addEventListener('change', (e) => { this.showPins = e.target.checked; this.drawMarks(); });
+    this.root.querySelector('#prev').addEventListener('click', () => this.step(-1));
+    this.root.querySelector('#next').addEventListener('click', () => this.step(1));
     const zoom = this.root.querySelector('#zoom');
     zoom.value = this.zoom;
     zoom.addEventListener('change', () => { this.zoom = zoom.value; this.applyZoom(); });
@@ -347,12 +406,12 @@ class Viewer {
       apply();
       swipe.addEventListener('input', apply);
     }
-    // synced scrolling (proportional, pages can differ in height)
+    // proportional scroll sync (pages can differ in height); paused while jumping to an issue
     const scrollers = [...this.root.querySelectorAll('.scroller')];
     if (scrollers.length === 2) {
       let lock = false;
       scrollers.forEach((s, idx) => s.addEventListener('scroll', () => {
-        if (lock || !this.root.querySelector('#sync').checked) return;
+        if (lock || this.jumping) return;
         lock = true;
         const other = scrollers[1 - idx];
         const ratio = s.scrollTop / Math.max(1, s.scrollHeight - s.clientHeight);
@@ -360,13 +419,16 @@ class Viewer {
         requestAnimationFrame(() => { lock = false; });
       }));
     }
+    // clicking empty screenshot area clears the selection
+    this.root.querySelectorAll('.canvas').forEach((c) => c.addEventListener('click', (e) => {
+      if (!e.target.closest('.pin, .focus-label')) this.onSelect(null);
+    }));
     this.root.querySelectorAll('img').forEach((img) => img.addEventListener('load', () => this.drawMarks()));
-    this.applyZoom();
-    if (!this.resizeObs) {
-      this.resizeObs = new ResizeObserver(() => this.drawMarks());
-    }
+    if (!this.resizeObs) this.resizeObs = new ResizeObserver(() => this.drawMarks());
     this.resizeObs.disconnect();
     this.root.querySelectorAll('.canvas').forEach((c) => this.resizeObs.observe(c));
+    this.applyZoom();
+    this.updateNav();
   }
 
   applyZoom() {
@@ -376,38 +438,111 @@ class Viewer {
     this.drawMarks();
   }
 
+  visibleOrder() { return this.order.filter((id) => this.visibleIds.has(id)); }
+
+  step(dir) {
+    const list = this.visibleOrder();
+    if (!list.length) return;
+    const idx = list.indexOf(this.selected);
+    let next = (idx + dir + list.length) % list.length;
+    if (idx < 0) next = dir > 0 ? 0 : list.length - 1;
+    this.onSelect(list[next], 'viewer');
+  }
+
+  updateNav() {
+    const list = this.visibleOrder();
+    const pos = this.root.querySelector('#nav-pos');
+    if (!pos) return;
+    const idx = list.indexOf(this.selected);
+    pos.textContent = idx >= 0 ? `${idx + 1} / ${list.length}` : `${list.length} issues`;
+  }
+
+  // one pin per element: issues whose element sits at the same spot share a pin
+  pinsFor(side) {
+    const pins = [];
+    this.visibleOrder().map((id) => this.issue(id)).forEach((i) => {
+      const r = rectsFor(i, side)[0];
+      if (!r) return;
+      const near = pins.find((p) => Math.abs(p.x - r.x) < 16 && Math.abs(p.y - r.y) < 16);
+      if (near) near.issues.push(i);
+      else pins.push({ x: r.x, y: r.y, issues: [i] });
+    });
+    return pins;
+  }
+
   drawMarks() {
-    const panes = [...this.root.querySelectorAll('.pane')];
-    panes.forEach((pane) => {
+    this.root.querySelectorAll('.pane').forEach((pane) => {
       const marks = pane.querySelector('.marks');
       const img = pane.querySelector('img');
       if (!img || !img.naturalWidth) return;
       const scale = img.clientWidth / img.naturalWidth;
       const side = this.mode === 'side' ? pane.dataset.side : 'm';
+      const box = (r, cls, extra = '') => `<div class="${cls}" ${extra} style="left:${r.x * scale}px;top:${r.y * scale}px;width:${Math.max(4, r.w * scale)}px;height:${Math.max(4, r.h * scale)}px"></div>`;
       let html = '';
-      if (this.mode === 'diff') {
-        html += this.result.regions.map((g) => `<div class="hotspot" style="left:${g.x * scale}px;top:${g.y * scale}px;width:${g.w * scale}px;height:${g.h * scale}px"></div>`).join('');
+      const sel = this.selected && this.issue(this.selected);
+      if (this.mode === 'diff' && !sel) {
+        html += this.result.regions.map((g) => box(g, 'hotspot')).join('');
       }
-      if (this.showMarkers) {
-        this.result.issues.filter((i) => this.visibleIds.has(i.id)).forEach((i) => {
-          rectsFor(i, side).forEach((rc, k) => {
-            const expected = side === 'm' && i.m?.expected;
-            html += `<div class="mark ${i.severity} ${this.selected === i.id ? 'sel' : ''} ${expected ? 'expected' : ''}" data-id="${esc(i.id)}"
-              style="left:${rc.x * scale}px;top:${rc.y * scale}px;width:${Math.max(6, rc.w * scale)}px;height:${Math.max(6, rc.h * scale)}px"
-              title="${esc(`${i.n}. ${i.title}`)}">${k === 0 ? `<span>${i.n}</span>` : ''}</div>`;
-          });
-        });
+      if (sel) {
+        const rects = rectsFor(sel, side);
+        if (rects.length) {
+          const [first, ...rest] = rects;
+          const expected = side === 'm' && sel.m?.expected;
+          html += box(first, `focus sev-${sel.severity} ${expected ? 'expected' : ''}`);
+          html += rest.map((r) => box(r, `also sev-${sel.severity}`)).join('');
+          const below = first.y * scale < 34;
+          html += `<div class="focus-label sev-${sel.severity} ${below ? 'below' : ''}" style="left:${first.x * scale}px;top:${(below ? first.y + first.h : first.y) * scale}px">
+            <b>${sel.n}</b>${esc(expected ? 'Missing here' : sel.title)}</div>`;
+        } else {
+          html += `<div class="pane-note">${side === 'o' ? 'Not on the original page' : 'Not on the migrated page'}</div>`;
+        }
+      }
+      if (this.showPins && !sel) { // focus mode shows the label instead of pins
+        // keep pins inside the frame and nudge pins that would overlap
+        const placed = [];
+        const maxX = img.clientWidth - 14;
+        html += this.pinsFor(side).map((raw) => {
+          const p = { ...raw, x: Math.min(maxX, Math.max(12, raw.x * scale)), y: Math.max(12, raw.y * scale) };
+          while (placed.some((q) => Math.abs(q.x - p.x) < 26 && Math.abs(q.y - p.y) < 22)) p.x += 28;
+          placed.push(p);
+          return p;
+        }).map((p) => {
+          const worst = p.issues.reduce((a, b) => (SEV_RANK[b.severity] > SEV_RANK[a.severity] ? b : a));
+          const isOn = sel && p.issues.includes(sel);
+          if (sel && !isOn) return ''; // focus mode: only the selected pin
+          const title = p.issues.map((i) => `${i.n}. ${i.title}`).join('\n');
+          return `<button type="button" class="pin sev-${worst.severity} ${isOn ? 'on' : ''}" data-ids="${p.issues.map((i) => esc(i.id)).join(',')}"
+            style="left:${p.x}px;top:${p.y}px" title="${esc(title)}">${isOn ? sel.n : p.issues[0].n}${p.issues.length > 1 ? `<small>+${p.issues.length - 1}</small>` : ''}</button>`;
+        }).join('');
       }
       marks.innerHTML = html;
-      marks.querySelectorAll('.mark').forEach((mk) => mk.addEventListener('click', () => this.onSelect(mk.dataset.id, 'viewer')));
+      marks.querySelectorAll('.pin').forEach((pin) => {
+        const ids = pin.dataset.ids.split(',');
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // clicking a shared pin again cycles through its issues
+          const idx = ids.indexOf(this.selected);
+          this.onSelect(ids[(idx + 1) % ids.length], 'viewer');
+        });
+        pin.addEventListener('mouseenter', () => {
+          if (this.selected) return;
+          const r = rectsFor(this.issue(ids[0]), side)[0];
+          marks.insertAdjacentHTML('afterbegin', box(r, 'hover-box'));
+        });
+        pin.addEventListener('mouseleave', () => marks.querySelector('.hover-box')?.remove());
+      });
     });
+    this.updateNav();
   }
 
   select(id) {
     this.selected = id;
     this.drawMarks();
-    const issue = this.result.issues.find((i) => i.id === id);
+    const issue = id && this.issue(id);
     if (!issue) return;
+    this.jumping = true;
+    clearTimeout(this.jumpTimer);
+    this.jumpTimer = setTimeout(() => { this.jumping = false; }, 700);
     this.root.querySelectorAll('.pane').forEach((pane) => {
       const side = this.mode === 'side' ? pane.dataset.side : 'm';
       const rc = rectsFor(issue, side)[0] || rectsFor(issue, side === 'm' ? 'o' : 'm')[0];
@@ -415,13 +550,10 @@ class Viewer {
       if (!rc || !img?.naturalWidth) return;
       const scale = img.clientWidth / img.naturalWidth;
       const scroller = pane.querySelector('.scroller');
-      scroller.scrollTo({ top: Math.max(0, rc.y * scale - 80), left: Math.max(0, rc.x * scale - 40), behavior: 'smooth' });
+      const h = rc.h * scale;
+      const top = h < scroller.clientHeight - 120 ? rc.y * scale - (scroller.clientHeight - h) / 2 : rc.y * scale - 60;
+      scroller.scrollTo({ top: Math.max(0, top), left: Math.max(0, rc.x * scale - 40), behavior: 'smooth' });
     });
-    const sync = this.root.querySelector('#sync');
-    if (sync && sync.checked) {
-      sync.checked = false; // independent jump to each side's element
-      setTimeout(() => { sync.checked = true; }, 900);
-    }
   }
 }
 
@@ -433,11 +565,12 @@ function matrixHtml(report) {
     rows.get(k).cells[r.width] = i;
   }));
   const sorted = [...rows.values()].sort((a, b) => Object.keys(b.cells).length - Object.keys(a.cells).length);
-  return `<table class="matrix"><thead><tr><th>Issue</th>${report.results.map((r) => `<th>${r.width}</th>`).join('')}</tr></thead><tbody>
-    ${sorted.map((row) => `<tr><td><span class="cat">${CATEGORY_LABEL[row.category] || row.category}</span> ${esc(row.title)}</td>
+  return `<p class="muted">Each row is a problem; each column a tested width. Click a dot to open it.</p>
+    <table class="matrix"><thead><tr><th>Issue</th>${report.results.map((r) => `<th>${r.width}px</th>`).join('')}</tr></thead><tbody>
+    ${sorted.map((row) => `<tr><td><span class="cat-tag">${CATEGORY_LABEL[row.category] || row.category}</span> ${esc(row.title)}</td>
       ${report.results.map((r) => {
     const i = row.cells[r.width];
-    return `<td>${i ? `<a class="dot ${i.severity}" href="#" data-goto="${esc(i.id)}" title="${esc(`${r.width}px · #${i.n}`)}">${i.n}</a>` : ''}</td>`;
+    return `<td>${i ? `<a class="dot ${i.severity}" href="#" data-goto="${esc(i.id)}" title="${esc(`${r.width}px · #${i.n}`)}">${i.n}</a>` : '<span class="ok-dot" title="OK at this width">✓</span>'}</td>`;
   }).join('')}</tr>`).join('')}
   </tbody></table>`;
 }
@@ -473,29 +606,26 @@ async function renderReport(id, params) {
       <div class="score-ring ${scoreClass(s.score)}" style="--v:${s.score}"><b>${s.score}</b><span>parity</span></div>
       <div class="rh-main">
         <div class="rh-urls">
-          <div><span class="lbl">Original</span><a href="${esc(report.original)}" target="_blank" rel="noopener">${esc(report.original)}</a></div>
-          <div><span class="lbl">Migrated</span><a href="${esc(report.migrated)}" target="_blank" rel="noopener">${esc(report.migrated)}</a></div>
+          <div><span class="lbl o">Original</span><a href="${esc(report.original)}" target="_blank" rel="noopener">${esc(report.original)}</a></div>
+          <div><span class="lbl m">Migrated</span><a href="${esc(report.migrated)}" target="_blank" rel="noopener">${esc(report.migrated)}</a></div>
         </div>
         <div class="rh-stats">
-          <span><b class="sev-high">${s.high}</b> high</span><span><b class="sev-medium">${s.medium}</b> medium</span><span><b class="sev-low">${s.low}</b> low</span>
-          <span class="muted">Breakpoints ${report.breakpoints.join(', ') || '–'} · tested ${report.widths.join(', ')}px · ${new Date(report.created).toLocaleString()}</span>
+          <span class="stat high"><b>${s.high}</b> high</span><span class="stat medium"><b>${s.medium}</b> medium</span><span class="stat low"><b>${s.low}</b> low</span>
+          <span class="muted">Breakpoints ${report.breakpoints.join(', ') || '–'} · tested ${report.widths.join(', ')}px</span>
         </div>
-        ${showMismatch ? `<div class="banner">
-          <b>Breakpoint mismatch.</b>
-          ${mismatch.missingInMigrated.length ? `The original switches layout at <b>${mismatch.missingInMigrated.join(', ')}px</b>, but the migrated CSS has no media query there.` : ''}
-          ${mismatch.extraInMigrated.length ? `The migrated CSS switches at <b>${mismatch.extraInMigrated.join(', ')}px</b>, which the original doesn't use.` : ''}
-          Issues usually show up between these widths. Use the original's values in the block CSS media queries.
-          <button type="button" class="btn tiny" id="rerun-edges">Re-run including these widths</button>
-        </div>` : ''}
       </div>
       <div class="rh-actions">
         <a class="btn ghost" href="/reports/${esc(report.id)}/report.json" download>Download JSON</a>
         <button type="button" class="btn secondary" id="rerun">Re-run</button>
       </div>
     </section>
+    ${showMismatch ? `<div class="banner"><b>Breakpoints don't match.</b>
+      ${mismatch.missingInMigrated.length ? `Original changes layout at <b>${mismatch.missingInMigrated.join(', ')}px</b>, but migrated doesn't.` : ''}
+      ${mismatch.extraInMigrated.length ? `Migrated changes layout at <b>${mismatch.extraInMigrated.join(', ')}px</b>, but original doesn't.` : ''}
+      <button type="button" class="btn tiny" id="rerun-edges">Re-run at these widths</button></div>` : ''}
     <nav class="tabs">${tabs.map((t) => (t.r
-    ? `<button type="button" data-tab="${t.key}"><b>${t.r.width}px</b><span class="score-pill sm ${scoreClass(t.r.score)}">${t.r.score}</span><span class="tc"><i class="sev-high">${t.r.stats.high}</i><i class="sev-medium">${t.r.stats.medium}</i><i class="sev-low">${t.r.stats.low}</i></span></button>`
-    : `<button type="button" data-tab="${t.key}"><b>${t.key === 'matrix' ? 'Across breakpoints' : 'All fixes'}</b></button>`)).join('')}</nav>
+    ? `<button type="button" data-tab="${t.key}"><b>${t.r.width}px</b><span class="score-pill sm ${scoreClass(t.r.score)}">${t.r.score}</span>${t.r.stats.high ? `<span class="tc high">${t.r.stats.high}</span>` : ''}</button>`
+    : `<button type="button" data-tab="${t.key}" class="aux"><b>${t.key === 'matrix' ? 'Across breakpoints' : 'All fixes'}</b></button>`)).join('')}</nav>
     <section id="tab-body"></section>`;
 
   const body = document.getElementById('tab-body');
@@ -511,19 +641,19 @@ async function renderReport(id, params) {
   });
 
   let viewer;
+  let keyHandler;
   const showTab = (key, focusId) => {
     current = key;
     app.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === key));
     const url = new URL(window.location.href);
-    const hashParams = new URLSearchParams({ tab: key });
-    url.hash = `#/report/${id}?${hashParams}`;
+    url.hash = `#/report/${id}?${new URLSearchParams({ tab: key })}`;
     window.history.replaceState(null, '', url);
+    if (keyHandler) document.removeEventListener('keydown', keyHandler);
     if (key === 'matrix') {
       body.innerHTML = `<div class="card">${matrixHtml(report)}</div>`;
       body.querySelectorAll('[data-goto]').forEach((a) => a.addEventListener('click', (e) => {
         e.preventDefault();
-        const [w] = a.dataset.goto.split('-');
-        showTab(w, a.dataset.goto);
+        showTab(a.dataset.goto.split('-')[0], a.dataset.goto);
       }));
       return;
     }
@@ -539,43 +669,63 @@ async function renderReport(id, params) {
       <div class="viewer card" id="viewer"></div>
       <aside class="issues card">
         <div class="issues-head">
-          <h2>${result.issues.length} issues at ${result.width}px</h2>
-          <p class="muted">${result.stats.similarity}% pixel match · ${result.stats.matchRate}% of elements matched · ${result.page.o.height}px vs ${result.page.m.height}px tall</p>
+          <div class="ih-top"><h2>${result.issues.length} issues at ${result.width}px</h2>
+            <span class="muted" title="Pixel match · elements matched">${result.stats.similarity}% pixels · ${result.stats.matchRate}% elements</span></div>
           <div class="filters">
-            ${['high', 'medium', 'low'].map((sv) => `<label class="fchip ${sv}"><input type="checkbox" value="${sv}" checked> ${sv}</label>`).join('')}
-            <select id="cat"><option value="">All categories</option>${cats.map((c) => `<option value="${c}">${CATEGORY_LABEL[c] || c}</option>`).join('')}</select>
-            <input type="search" id="q" placeholder="Filter…">
+            ${['high', 'medium', 'low'].map((sv) => `<label class="fchip ${sv}"><input type="checkbox" value="${sv}" checked><span>${sv}</span><b>${result.stats[sv]}</b></label>`).join('')}
+            <select id="cat" aria-label="Category"><option value="">All types</option>${cats.map((c) => `<option value="${c}">${CATEGORY_LABEL[c] || c}</option>`).join('')}</select>
           </div>
         </div>
         <div class="issue-list" id="issue-list"></div>
+        <p class="kbd-hint muted">← → step through issues · Esc to clear</p>
       </aside>
     </div>`;
     const list = document.getElementById('issue-list');
     const select = (iid, from) => {
-      list.querySelectorAll('.issue').forEach((el) => el.classList.toggle('sel', el.dataset.id === iid));
+      list.querySelectorAll('.issue').forEach((el) => {
+        const open = el.dataset.id === iid;
+        el.classList.toggle('open', open);
+        el.querySelector('.issue-row').setAttribute('aria-expanded', String(open));
+        const bodyEl = el.querySelector('.issue-body');
+        if (open && !bodyEl.innerHTML) {
+          bodyEl.innerHTML = issueBody(report, result, result.issues.find((i) => i.id === iid));
+          bodyEl.querySelectorAll('.copy').forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, b)));
+        }
+      });
       viewer.select(iid);
-      if (from === 'viewer') list.querySelector(`[data-id="${CSS.escape(iid)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (iid && from !== 'list') list.querySelector(`[data-id="${CSS.escape(iid)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
     viewer = new Viewer(document.getElementById('viewer'), report, result, select);
     const applyFilters = () => {
       const sev = [...body.querySelectorAll('.filters input[type=checkbox]:checked')].map((x) => x.value);
       const cat = body.querySelector('#cat').value;
-      const q = body.querySelector('#q').value.toLowerCase();
       const shown = result.issues
         .filter((i) => sev.includes(i.severity) && (!cat || i.category === cat))
-        .filter((i) => !q || `${i.title} ${i.detail} ${i.m?.selector || ''} ${i.fix?.file || ''}`.toLowerCase().includes(q))
         .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity] || a.n - b.n);
-      viewer.visibleIds = new Set(shown.map((i) => i.id));
-      viewer.drawMarks();
-      list.innerHTML = shown.length ? shown.map(issueCard).join('') : '<p class="muted pad">No issues match the filters. Nice.</p>';
-      list.querySelectorAll('.issue').forEach((el) => {
-        el.addEventListener('click', (e) => { if (!e.target.closest('.copy')) select(el.dataset.id, 'list'); });
-        el.addEventListener('keydown', (e) => { if (e.key === 'Enter') select(el.dataset.id, 'list'); });
-      });
-      list.querySelectorAll('.copy').forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, b)));
+      viewer.order = shown.map((i) => i.id);
+      viewer.visibleIds = new Set(viewer.order);
+      list.innerHTML = shown.length
+        ? ['high', 'medium', 'low'].map((sv) => {
+          const group = shown.filter((i) => i.severity === sv);
+          return group.length ? `<h3 class="group ${sv}">${sv} <span>${group.length}</span></h3>${group.map(issueRow).join('')}` : '';
+        }).join('')
+        : '<p class="muted pad">No issues match the filters.</p>';
+      list.querySelectorAll('.issue-row').forEach((row) => row.addEventListener('click', () => {
+        const iid = row.closest('.issue').dataset.id;
+        select(viewer.selected === iid ? null : iid, 'list');
+      }));
+      if (viewer.selected && !viewer.visibleIds.has(viewer.selected)) select(null);
+      else viewer.drawMarks();
     };
     body.querySelectorAll('.filters input, .filters select').forEach((x) => x.addEventListener('input', applyFilters));
     applyFilters();
+    keyHandler = (e) => {
+      if (e.target.closest?.('input, select, textarea')) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); viewer.step(1); }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); viewer.step(-1); }
+      if (e.key === 'Escape') select(null);
+    };
+    document.addEventListener('keydown', keyHandler);
     if (focusId) setTimeout(() => select(focusId, 'viewer'), 300);
   };
   app.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
