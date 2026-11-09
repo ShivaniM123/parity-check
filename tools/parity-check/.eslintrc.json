@@ -1,0 +1,10 @@
+{
+  "env": { "node": true, "browser": true },
+  "rules": {
+    "max-len": "off",
+    "object-curly-newline": "off",
+    "import/prefer-default-export": "off",
+    "import/no-extraneous-dependencies": "off",
+    "no-use-before-define": ["error", { "functions": false }]
+  }
+}

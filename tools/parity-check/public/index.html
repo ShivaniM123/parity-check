@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parity Check</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='4' width='9' height='16' rx='2' fill='%233b4ce0'/%3E%3Crect x='13' y='4' width='9' height='16' rx='2' fill='%238fa0ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="9" height="16" rx="2"/><rect x="13" y="4" width="9" height="16" rx="2"/><path d="M6.5 9v6M17.5 9v6"/></svg>
+      Parity Check
+    </a>
+    <span class="tagline">Visual parity of original vs migrated pages, at every site breakpoint</span>
+    <nav><a href="#/">New comparison</a><a href="#/history">History</a></nav>
+  </header>
+  <main id="app"></main>
+  <template id="tpl-setup">
+    <section class="setup">
+      <form class="card" id="setup-form" autocomplete="off">
+        <h1>Compare pages</h1>
+        <div class="url-row">
+          <label>Original page
+            <input type="url" name="original" required placeholder="https://www.example.com/products/widget">
+          </label>
+          <span class="vs">vs</span>
+          <label>Migrated page
+            <input type="url" name="migrated" required placeholder="https://main--site--org.aem.page/products/widget">
+          </label>
+        </div>
+        <p class="hint" id="site-hint"></p>
+
+        <div class="bp-head">
+          <h2>Site breakpoints</h2>
+          <button type="button" class="btn secondary" id="detect">Detect from original</button>
+          <span class="status" id="detect-status"></span>
+        </div>
+        <div id="bp-chart" class="bp-chart" hidden></div>
+        <div class="chips" id="bp-chips"></div>
+        <div class="add-row">
+          <input type="number" id="bp-add" min="280" max="2560" placeholder="Add breakpoint, e.g. 768">
+          <button type="button" class="btn ghost" id="bp-add-btn">Add</button>
+        </div>
+
+        <h2>Viewport widths to test</h2>
+        <div class="toggles">
+          <label><input type="checkbox" id="w-base" checked> Mobile base (375)</label>
+          <label><input type="checkbox" id="w-edges"> Edges (each breakpoint − 1px)</label>
+          <label><input type="checkbox" id="w-wide" checked> Wide desktop (1440)</label>
+        </div>
+        <div class="chips" id="width-chips"></div>
+        <div class="add-row">
+          <input type="number" id="w-add" min="280" max="3840" placeholder="Extra width, e.g. 1920">
+          <button type="button" class="btn ghost" id="w-add-btn">Add</button>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <label>Hide before capture (CSS selectors, one per line: cookie banners, chat widgets…)
+            <textarea name="hide" rows="4">#onetrust-consent-sdk
+#onetrust-banner-sdk
+.cookie-banner
+[id*="cookie" i][class*="banner" i]
+#usercentrics-root</textarea>
+          </label>
+          <div class="grid3">
+            <label>Max capture height (px)<input type="number" name="maxHeight" value="12000" min="1000" max="40000" step="500"></label>
+            <label>Settle time after load (ms)<input type="number" name="waitMs" value="800" min="0" max="10000" step="100"></label>
+            <label>Pixel threshold (0–1)<input type="number" name="pixelThreshold" value="0.1" min="0" max="1" step="0.05"></label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button type="submit" class="btn primary">Run comparison</button>
+          <button type="button" class="btn ghost" id="save-site">Save breakpoints for this site</button>
+          <button type="button" class="btn link" id="demo">Try the demo pair</button>
+        </div>
+      </form>
+      <aside class="card recent">
+        <h2>Recent comparisons</h2>
+        <div id="recent-list" class="history-list"></div>
+      </aside>
+    </section>
+  </template>
+</body>
+</html>

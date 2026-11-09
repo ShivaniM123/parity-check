@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwind Outdoor — Migrated (EDS)</title>
+<style>
+  :root {
+    --background-color: #fff;
+    --light-color: #f5f5f5;
+    --text-color: #1f2a37;
+    --link-color: #c2410c;
+    --body-font-family: arial, sans-serif;
+    --heading-font-family: arial, sans-serif;
+    --heading-font-size-xxl: 52px;
+    --heading-font-size-xl: 34px;
+    --heading-font-size-l: 28px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--body-font-family); color: var(--text-color); background: var(--background-color); }
+  h1, h2, h3 { font-family: var(--heading-font-family); }
+  header .header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #12372a; color: #fff; }
+  header .header a { color: #fff; text-decoration: none; margin-left: 20px; font-size: 15px; }
+  header .header .logo { font-size: 22px; font-weight: 700; margin: 0; }
+  header .header nav { display: none; }
+  main > .section > div { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+  main > .section { padding: 40px 0; }
+  main > .section.hero-section { background: var(--light-color); padding: 64px 0; text-align: center; }
+  .hero-section h1 { font-size: var(--heading-font-size-xl); line-height: 1.2; margin: 0 0 16px; }
+  .hero-section p { font-size: 18px; line-height: 1.6; margin: 0 auto 28px; max-width: 640px; }
+  a.button { display: inline-block; background: var(--link-color); color: #fff; padding: 12px 24px; border-radius: 4px; font-weight: 700; text-decoration: none; }
+  .default-content-wrapper h2 { font-size: var(--heading-font-size-l); margin: 0 0 48px; text-align: center; }
+  .cards > ul { display: grid; grid-template-columns: 1fr; gap: 24px; list-style: none; padding: 0; margin: 0; }
+  .cards li { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .cards .cards-card-image img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+  .cards .cards-card-body h3 { font-size: 20px; margin: 16px 16px 8px; }
+  .cards .cards-card-body p { font-size: 15px; line-height: 1.5; margin: 0 16px 20px; color: #4b5563; }
+  .site-legal { min-width: 520px; }
+  footer .footer { padding: 32px 24px; font-size: 14px; color: #6b7280; text-align: center; }
+  @media (width >= 600px) {
+    .cards > ul { grid-template-columns: repeat(2, 1fr); }
+    .hero-section h1 { font-size: 42px; }
+    .site-legal { min-width: 0; }
+  }
+  @media (width >= 900px) {
+    header .header nav { display: block; }
+    main > .section.hero-section { padding: 96px 0; }
+    .hero-section h1 { font-size: var(--heading-font-size-xxl); }
+  }
+</style>
+</head>
+<body>
+  <header><div class="header block" data-block-name="header">
+    <p class="logo">Northwind Outdoor</p>
+    <nav><a href="/gear">Gear</a><a href="/trips">Trips</a><a href="/journal">Journal</a></nav>
+  </div></header>
+  <main>
+    <div class="section hero-section">
+      <div class="default-content-wrapper">
+        <h1>Gear built for the long trail</h1>
+        <p>Lightweight, repairable equipment designed with guides who spend two hundred nights a year outside.</p>
+        <p class="button-container"><a class="button" href="/gear">Shop the collection</a></p>
+      </div>
+    </div>
+    <div class="section cards-container">
+      <div class="default-content-wrapper"><h2>Why hikers choose us</h2></div>
+      <div class="cards-wrapper"><div class="cards block" data-block-name="cards">
+        <ul>
+          <li><div class="cards-card-image"><picture><img alt="Tent at dusk" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%232f6f4f'/%3E%3Cpolygon points='120,230 200,90 280,230' fill='%23f4f1ea'/%3E%3C/svg%3E"></picture></div><div class="cards-card-body"><h3>Repairable by design</h3><p>Every product ships with spare parts and a lifetime repair promise.</p></div></li>
+          <li><div class="cards-card-image"><picture><img alt="Backpack on rock" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23d9480f'/%3E%3Crect x='150' y='80' width='100' height='150' rx='20' fill='%2312372a'/%3E%3C/svg%3E"></picture></div><div class="cards-card-body"><h3>Field tested</h3><p>Prototypes cover ten thousand kilometres before they reach the shelf.</p></div></li>
+          <li><div class="cards-card-image"><picture><img alt="Map and compass" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23e9c46a'/%3E%3Ccircle cx='200' cy='150' r='70' fill='%23264653'/%3E%3C/svg%3E"></picture></div><div class="cards-card-body"><h3>Lighter every season</h3><p>We publish the weight of every item and cut grams each year.</p></div></li>
+        </ul>
+      </div></div>
+    </div>
+  </main>
+  <footer><div class="footer block" data-block-name="footer"><p class="site-legal">© 2026 Northwind Outdoor. All rights reserved.</p></div></footer>
+</body>
+</html>
