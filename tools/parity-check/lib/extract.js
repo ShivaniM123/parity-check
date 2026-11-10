@@ -338,7 +338,8 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
       selector: selectorOf(el),
       block: blockOf(el),
       region: regionOf(el),
-      embed: embedOf(el),
+      // a quote that links to a tweet/video is that post, even without embed markup
+      embed: embedOf(el) || (el.closest('blockquote') && postIdOf(el.closest('blockquote')) ? 'post' : null), // eslint-disable-line no-use-before-define
       fixed: (() => {
         let cur = el;
         while (cur && cur !== document.body) {
@@ -417,11 +418,59 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
       // a fallback that already contains the rendered iframe counts once, as rendered
       if (!isRendered && el.querySelector('iframe')) return;
       embeds.push({
-        provider, rendered: isRendered, rect: r, selector: selectorOf(el), block: blockOf(el), region: regionOf(el),
+        provider,
+        rendered: isRendered,
+        id: postIdOf(el), // eslint-disable-line no-use-before-define
+        text: isRendered ? '' : norm(el.innerText).slice(0, 400),
+        rect: r,
+        selector: selectorOf(el),
+        block: blockOf(el),
+        region: regionOf(el),
       });
     });
   });
   embeds.sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+
+  // Plain links to embeddable posts outside any embed. Migration usually keeps a tweet
+  // or video as ordinary content (quote + link) without the provider's embed markup.
+  const embedLinks = [];
+  document.querySelectorAll('a[href]').forEach((a) => {
+    if (embedOf(a)) return;
+    const hit = postIdOf(a); // eslint-disable-line no-use-before-define
+    if (!hit) return;
+    const container = a.closest('blockquote, figure, p, li, div') || a;
+    const r = rectOf(container);
+    if (!isVisible(a, rectOf(a))) return;
+    embedLinks.push({
+      provider: hit.split(':')[0], id: hit, rect: r, selector: selectorOf(container), block: blockOf(a),
+    });
+  });
+
+  /** "Twitter:1398…" / "YouTube:dQw4w9WgXcQ" / "Instagram:CPx…" from an embed or link. */
+  function postIdOf(el) {
+    const urls = [
+      el.getAttribute?.('src'), el.getAttribute?.('href'), el.getAttribute?.('data-tweet-id') && `twitter.com/i/status/${el.getAttribute('data-tweet-id')}`,
+      el.getAttribute?.('data-instgrm-permalink'), el.getAttribute?.('videoid') && `youtu.be/${el.getAttribute('videoid')}`,
+      ...[...(el.querySelectorAll?.('a[href]') || [])].map((x) => x.getAttribute('href')),
+    ].filter(Boolean);
+    const patterns = [
+      ['Twitter', /(?:twitter\.com|x\.com)\/[^/?#]+\/status(?:es)?\/(\d+)|platform\.twitter\.com\/embed\/[^?#]*\?(?:[^#]*&)?id=(\d+)/],
+      ['YouTube', /(?:youtube(?:-nocookie)?\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/],
+      ['Instagram', /instagram\.com\/(?:p|reel|tv)\/([\w-]+)/],
+      ['TikTok', /tiktok\.com\/@[^/]+\/video\/(\d+)|tiktok\.com\/embed\/(?:v2\/)?(\d+)/],
+      ['Vimeo', /vimeo\.com\/(?:video\/)?(\d+)/],
+    ];
+    // eslint-disable-next-line no-restricted-syntax
+    for (const [provider, re] of patterns) {
+      // eslint-disable-next-line no-restricted-syntax
+      for (const u of urls) {
+        const m = String(u).match(re);
+        const id = m && m.slice(1).find(Boolean);
+        if (id) return `${provider}:${id}`;
+      }
+    }
+    return null;
+  }
 
   // ---- page level ----
   const offenders = [];
@@ -488,6 +537,7 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     fonts: [...document.fonts].map((f) => ({ family: f.family.replace(/["']/g, ''), status: f.status, weight: f.weight })),
     isEds: !!document.querySelector('main .section, .block[data-block-name]'),
     embeds,
+    embedLinks: embedLinks.slice(0, 50),
     tokens,
     elements,
   };

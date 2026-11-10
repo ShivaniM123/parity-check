@@ -56,7 +56,7 @@ Then ask follow-up questions:
 
 ## Visual parity toggle
 
-The **Visual parity** switch in the top bar (next to *Chat* / *History*) swaps the chat for a full-screen comparison. Clicking any issue in the chat also switches it on. Switch it off, or click *← Back to chat*, to return to the conversation. The viewer borrows patterns from free tools reviewers already know:
+The **Visual parity** switch in the top bar (next to *History* and *New chat*) swaps the chat for a full-screen comparison. Clicking any issue in the chat also switches it on. Switch it off, or click *← Back to chat*, to return to the conversation. The viewer borrows patterns from free tools reviewers already know:
 
 | View (key) | Modelled on | What it does |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ A fix gets a media query only if the issue doesn't occur at every tested width, 
 | Image | Aspect ratio / crop, rendered size (ignored when the image just fills its container), broken images |
 | Responsive | Elements hidden at a width (or shown when the original hides them), horizontal scrolling |
 | Content | Missing sections (header/footer issues point to the nav/footer fragment), extra content, randomized content at the same spot, heading-level changes |
-| Embeds | Twitter/X, Instagram, TikTok, Facebook, YouTube, Vimeo, Spotify, Google Maps, LinkedIn: compared as embeds, never as text. Reported when one is missing, extra, or rendered on one page but still the plain fallback (e.g. the tweet text) on the other. Capture waits up to 6s for provider scripts to render them |
+| Embeds | Twitter/X, Instagram, TikTok, Facebook, YouTube, Vimeo, Spotify, Google Maps, LinkedIn: compared as posts, never as text. Posts are matched by their ID (tweet, video, post) or by their text, so a tweet that migration turned into a plain quote + link still counts as present. Reported only when the pages look different (rendered card vs plain text), or when the post is really missing or extra. Capture waits up to 6s for provider scripts to render |
 | Page | Height difference, failed requests |
 
 Elements are matched by text first: unique exact matches, then duplicates resolved by position, then fuzzy matches. A vertical mapping learned from those anchors then matches images and controls. Translate transforms are removed before measuring, so scroll-reveal animations don't create false spacing issues. Shuffled content is left out of the spacing rules.

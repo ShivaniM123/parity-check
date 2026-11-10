@@ -17,7 +17,10 @@ body.route-chat { overflow: hidden; }
 .visual-col { min-width: 0; min-height: 0; display: none; flex-direction: column; background: var(--bg); padding: 12px 16px 16px; }
 .chat-app.with-visual .visual-col { display: flex; }
 
-/* chat controls in the top bar, after Chat / History */
+/* one chat control at a time: "New chat" on the chat page, "Chat" everywhere else */
+body.route-chat .nav-chat { display: none; }
+
+/* chat controls in the top bar, after History */
 .topbar nav { align-items: center; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; }
 .topbar-actions:not(:empty) { margin-left: 8px; padding-left: 16px; border-left: 1px solid var(--line); }

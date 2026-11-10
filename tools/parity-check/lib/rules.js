@@ -3,6 +3,8 @@
  * Every issue carries a recommended CSS fix targeted at the migrated page.
  */
 
+import { textKey, dice } from './match.js';
+
 const SEV = { high: 3, medium: 2, low: 1 };
 
 export function parseColor(c) {
@@ -714,8 +716,26 @@ export function analyzeWidth({
   });
 
   // ---------- third-party embeds (Twitter, Instagram, YouTube, …) ----------
-  // Compared per provider in page order. Their inner text is not comparable: once
-  // the provider script runs it lives in a cross-origin iframe.
+  // Paired by post id (tweet / video id) when known, otherwise in page order. A post
+  // that has no embed on the other page may still be there as plain content (quote +
+  // link): migration usually keeps the content but drops the provider's embed markup.
+  const sameText = (embedText, elements) => {
+    const k = textKey(embedText).slice(0, 240);
+    if (k.length < 20) return null;
+    return elements.find((e) => {
+      if (!e.visible || e.embed || !e.text) return false;
+      const ek = textKey(e.text);
+      if (ek.length < 20) return false;
+      return k.includes(ek.slice(0, 120)) || ek.includes(k.slice(0, 120)) || dice(k, ek.slice(0, 240)) >= 0.7;
+    }) || null;
+  };
+  // the same post shown as ordinary content on `page` (a link to it, or its text)
+  const asContent = (embed, page) => {
+    const link = embed.id && (page.embedLinks || []).find((l) => l.id === embed.id);
+    if (link) return { rect: link.rect, selector: link.selector, block: link.block };
+    const el = embed.text && sameText(embed.text, page.elements || []);
+    return el ? { rect: el.rect, selector: el.selector, block: el.block } : null;
+  };
   const providers = new Set([...(orig.embeds || []), ...(mig.embeds || [])].map((e) => e.provider));
   providers.forEach((provider) => {
     const oe = (orig.embeds || []).filter((e) => e.provider === provider);
@@ -723,10 +743,24 @@ export function analyzeWidth({
     // rendering an embed is the block's script's job, not its CSS
     const fileOf = (e) => (e.block && isEds ? `blocks/${e.block}/${e.block}.js` : null);
     const scriptNote = `The ${provider} embed script didn't render it. Check the embed block loads the provider script (EDS embed blocks load it when the block scrolls into view), and that a consent manager or CSP isn't blocking it.`;
-    for (let k = 0; k < Math.max(oe.length, me.length); k += 1) {
-      const o = oe[k];
-      const m = me[k];
-      if (o && m && o.rendered && !m.rendered) {
+
+    const pairs = [];
+    const usedM = new Set();
+    oe.forEach((o) => {
+      const m = o.id && me.find((x) => !usedM.has(x) && x.id === o.id);
+      if (m) { usedM.add(m); pairs.push([o, m]); }
+    });
+    const restM = me.filter((m) => !usedM.has(m));
+    const leftO = [];
+    oe.filter((o) => !pairs.some(([p]) => p === o)).forEach((o) => {
+      // in page order, unless both ids are known (different ids = different posts)
+      const idx = restM.findIndex((m) => !(o.id && m.id));
+      if (idx >= 0) pairs.push([o, restM.splice(idx, 1)[0]]);
+      else leftO.push(o);
+    });
+
+    pairs.forEach(([o, m]) => {
+      if (o.rendered && !m.rendered) {
         add({
           o: { rect: o.rect, selector: o.selector },
           m: { rect: m.rect, selector: m.selector, block: m.block },
@@ -741,7 +775,7 @@ export function analyzeWidth({
             file: fileOf(m), selector: null, decl: [], note: scriptNote,
           },
         });
-      } else if (o && m && !o.rendered && m.rendered) {
+      } else if (!o.rendered && m.rendered) {
         add({
           o: { rect: o.rect, selector: o.selector },
           m: { rect: m.rect, selector: m.selector, block: m.block },
@@ -749,45 +783,74 @@ export function analyzeWidth({
           property: 'embed',
           severity: 'low',
           title: `${provider} embed rendered on migrated, plain fallback on the original`,
-          detail: `Both pages contain the ${provider} embed. Only the migrated page rendered it during capture.`,
+          detail: `Both pages contain the ${provider} post. Only the migrated page rendered it during capture.`,
           ov: 'fallback text',
           mv: 'rendered',
           fix: {
             file: null, selector: null, decl: [], note: 'Usually fine. The original\'s embed script was slow or blocked during capture.',
           },
         });
-      } else if (o && !m) {
+      }
+    });
+
+    leftO.forEach((o) => {
+      const c = asContent(o, mig);
+      if (c && !o.rendered) return; // same post, shown as plain text on both pages: looks the same
+      if (c) {
         add({
           o: { rect: o.rect, selector: o.selector },
-          m: { rect: { x: o.rect.x, y: Math.round(match.ymap(o.rect.y)), w: o.rect.w, h: Math.min(o.rect.h, 120) }, selector: null, expected: true },
+          m: { rect: c.rect, selector: c.selector, block: c.block },
           category: 'content',
           property: 'embed',
-          severity: 'high',
-          title: `${provider} embed missing on the migrated page`,
-          detail: `The original has ${oe.length} ${provider} embed${oe.length > 1 ? 's' : ''}, the migrated page has ${me.length}.`,
-          ov: `${oe.length}`,
-          mv: `${me.length}`,
+          severity: 'medium',
+          title: `${provider} post shows as plain text on the migrated page`,
+          detail: `The post's content is on the migrated page, but as a plain quote/link instead of the embedded ${provider} card.`,
+          ov: 'embedded card',
+          mv: 'plain text',
           fix: {
-            file: null, selector: null, decl: [], note: `Author an embed block with the ${provider} URL, or check that the import parser keeps embeds.`,
+            file: null,
+            selector: null,
+            decl: [],
+            note: `Author it as an Embed block with the post's URL so the embed block renders the ${provider} card (EDS doesn't render embed markup inside default content).`,
           },
         });
-      } else if (!o && m) {
-        add({
-          o: { rect: null, selector: null },
-          m: { rect: m.rect, selector: m.selector, block: m.block },
-          category: 'content',
-          property: 'embed',
-          severity: 'low',
-          title: `Extra ${provider} embed on the migrated page`,
-          detail: `The migrated page has ${me.length} ${provider} embed${me.length > 1 ? 's' : ''}, the original has ${oe.length}.`,
-          ov: `${oe.length}`,
-          mv: `${me.length}`,
-          fix: {
-            file: null, selector: null, decl: [], note: 'Remove it from the page content if it isn\'t meant to be there.',
-          },
-        });
+        return;
       }
-    }
+      add({
+        o: { rect: o.rect, selector: o.selector },
+        m: { rect: { x: o.rect.x, y: Math.round(match.ymap(o.rect.y)), w: o.rect.w, h: Math.min(o.rect.h, 120) }, selector: null, expected: true },
+        category: 'content',
+        property: 'embed',
+        severity: 'high',
+        title: `${provider} post missing on the migrated page`,
+        detail: `This ${provider} post isn't on the migrated page, as an embed or as a quote/link.`,
+        ov: 'present',
+        mv: 'not found',
+        fix: {
+          file: null, selector: null, decl: [], note: `Author an Embed block with the ${provider} URL, or check that the import parser keeps embeds.`,
+        },
+      });
+    });
+
+    restM.forEach((m) => {
+      const c = asContent(m, orig);
+      if (c && !m.rendered) return; // plain on both pages
+      if (c) return; // original shows the same post as plain content: an upgrade, not a parity bug
+      add({
+        o: { rect: null, selector: null },
+        m: { rect: m.rect, selector: m.selector, block: m.block },
+        category: 'content',
+        property: 'embed',
+        severity: 'low',
+        title: `Extra ${provider} embed on the migrated page`,
+        detail: `This ${provider} post isn't on the original page.`,
+        ov: 'not present',
+        mv: 'present',
+        fix: {
+          file: null, selector: null, decl: [], note: 'Remove it from the page content if it isn\'t meant to be there.',
+        },
+      });
+    });
   });
 
   // ---------- page level ----------
