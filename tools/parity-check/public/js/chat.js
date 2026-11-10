@@ -256,6 +256,7 @@ function summaryHtml(report) {
         <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}">Copy for AEM Coder</button>
         <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
         <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
+        <button type="button" class="btn ghost" data-action="new-chat">Run new comparison</button>
       </div>
     </div></div>`;
 }
@@ -900,6 +901,7 @@ async function send(text) {
 /* ------------------------------------------------------------ side panels */
 
 let resultShown = null;
+let newChat = () => {};
 
 /** Right: the current result's summary, pinned so it doesn't scroll away with the chat. */
 async function renderResult(force = false) {
@@ -909,7 +911,8 @@ async function renderResult(force = false) {
   if (!state.reportId) {
     el.innerHTML = `<div class="rp-card"><h2 class="rp-title">${ICON.bars}Comparison summary</h2>
       <p class="muted">Run a comparison and its summary stays here: issue counts, top issues and quick actions.</p>
-      <p class="muted">Then ask in the chat, e.g. <code>show high issues</code>, <code>issue #2</code>, <code>fixes for cards</code>.</p></div>`;
+      <p class="muted">Then ask in the chat, e.g. <code>show high issues</code>, <code>issue #2</code>, <code>fixes for cards</code>.</p>
+      ${state.messages.length > 2 ? `<div class="quick one"><button type="button" class="qa" data-action="new-chat" title="Start a fresh chat with an empty comparison form">${ICON.rerun}<span>Run new comparison</span></button></div>` : ''}</div>`;
     return;
   }
   let report;
@@ -931,7 +934,7 @@ async function renderResult(force = false) {
     <div class="quick">
       <button type="button" class="qa" data-action="download" data-format="pdf" data-report="${esc(report.id)}">${ICON.download}<span>Download report</span></button>
       <button type="button" class="qa" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">${ICON.copy}<span>Copy for AEM Coder</span></button>
-      <button type="button" class="qa" data-action="form">${ICON.rerun}<span>Run new comparison</span></button>
+      <button type="button" class="qa" data-action="new-chat" title="Start a fresh chat with an empty comparison form">${ICON.rerun}<span>Run new comparison</span></button>
     </div>
   </div>`;
 }
@@ -981,6 +984,7 @@ function onAction(e) {
   }
   if (action === 'detect' && msg) detectInto(msg);
   if (action === 'form') addForm(); // eslint-disable-line no-use-before-define
+  if (action === 'new-chat') newChat();
   if (action === 'form-demo' && msg) {
     Object.assign(msg.data, {
       original: `${window.location.origin}/demo/original.html`, migrated: `${window.location.origin}/demo/migrated.html`, breakpoints: [640, 1024],
@@ -1047,8 +1051,7 @@ export function mountChat(app, params) {
   // chat controls live in the top bar, next to Chat / History
   const actions = document.getElementById('topbar-actions');
   actions.innerHTML = `<label class="switch" title="Show both pages side by side with issues marked">
-      <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
-    <button type="button" class="nav-link" id="new-chat">New chat</button>`;
+      <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>`;
   app.innerHTML = `<div class="chat-app">
     <section class="chat-col">
       <div class="messages" aria-live="polite"></div>
@@ -1159,14 +1162,15 @@ export function mountChat(app, params) {
     grow();
     send(text);
   });
-  actions.querySelector('#new-chat').addEventListener('click', () => {
+  // "Run new comparison": a fresh chat with an empty form (what "New chat" used to do)
+  newChat = () => {
     Object.assign(state, {
       messages: [], reportId: null, visualWidth: null, pending: {},
     });
     save();
     resultShown = undefined;
     mountChat(app, new URLSearchParams());
-  });
+  };
 
   if (!state.messages.length) {
     say(`<p>Hi! I check the <b>visual parity</b> between an original page and its migrated page, at the breakpoints you choose.</p>

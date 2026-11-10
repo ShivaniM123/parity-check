@@ -306,3 +306,4 @@ body.route-chat .nav-chat { display: none; }
 .qa:hover { border-color: var(--accent); background: #fafbff; }
 .qa svg { width: 22px; height: 22px; color: var(--accent); }
 .qa:disabled { opacity: 0.6; cursor: wait; }
+.quick.one { grid-template-columns: minmax(0, 160px); margin-top: 0; }

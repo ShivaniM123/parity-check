@@ -65,7 +65,7 @@ Then ask follow-up questions:
 
 ## Visual parity toggle
 
-The **Visual parity** switch in the top bar (next to *History* and *New chat*) swaps the chat for a full-screen comparison. Clicking any issue in the chat also switches it on. Switch it off, or click *← Back to chat*, to return to the conversation. The viewer borrows patterns from free tools reviewers already know:
+The **Visual parity** switch in the top bar (next to *History*) swaps the chat for a full-screen comparison. Clicking any issue in the chat also switches it on. Switch it off, or click *← Back to chat*, to return to the conversation. The viewer borrows patterns from free tools reviewers already know:
 
 | View (key) | Modelled on | What it does |
 | --- | --- | --- |
@@ -127,5 +127,5 @@ Elements are matched by text first: unique exact matches, then duplicates resolv
 - Fixes are recommendations computed from rendered styles. Review them before pasting, especially `margin`/`padding` changes, because margins collapse.
 - Common cookie banners (OneTrust, Usercentrics and similar) are hidden before capture.
 - Long pages are captured up to 12,000px tall.
-- The conversation is kept in the browser (local storage). *New chat* clears it; reports stay available under History.
+- The conversation is kept in the browser (local storage). *Run new comparison* (in the Comparison summary panel) clears it and opens an empty form; reports stay available under History.
 - Reports are written to `reports/` (git-ignored). The whole folder is in `.hlxignore`, so none of it is served by the site.
