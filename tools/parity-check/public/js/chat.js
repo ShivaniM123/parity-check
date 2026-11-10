@@ -201,15 +201,20 @@ const ICON = {
   rerun: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
 };
 
-/** Most important issues first, one per kind of problem. */
+/**
+ * Most important issues first. The same problem on the same element at another
+ * width is listed once; different elements are never merged, so every issue
+ * number of a width shows up.
+ */
 function topIssues(report, n) {
-  const seen = new Set();
+  const seenAt = new Map(); // problem key -> width it was first listed at
   return report.results.flatMap((r) => r.issues.map((i) => ({ ...i, reportId: report.id })))
     .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
     .filter((i) => {
-      const k = `${i.category}|${i.property}|${i.title.replace(/\d+/g, '#')}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
+      const el = i.m?.selector || i.o?.selector || '';
+      const k = `${i.category}|${i.property}|${el}|${i.title.replace(/\d+(\.\d+)?/g, '#')}`;
+      if (seenAt.has(k) && seenAt.get(k) !== i.width) return false;
+      if (!seenAt.has(k)) seenAt.set(k, i.width);
       return true;
     })
     .slice(0, n);
