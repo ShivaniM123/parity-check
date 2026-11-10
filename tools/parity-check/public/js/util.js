@@ -22,11 +22,22 @@ export function testWidths(bps, { base, edges, wide }, extra = []) {
   return [...set].filter((w) => w >= 280).sort((a, b) => a - b);
 }
 
-export async function copy(text, btn) {
-  await navigator.clipboard.writeText(text);
+export async function copy(text, btn, done = 'Copied') {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // no clipboard API (plain http, or the fetch took the user gesture): copy from a hidden field
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('Copying is blocked in this browser. Type "prompt for AEM Coder" and copy it from the preview.');
+  }
   const old = btn.textContent;
-  btn.textContent = 'Copied';
-  setTimeout(() => { btn.textContent = old; }, 1200);
+  btn.textContent = done;
+  setTimeout(() => { btn.textContent = old; }, 1800);
 }
 
 export function scoreClass(score) {

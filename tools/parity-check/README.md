@@ -49,6 +49,7 @@ Then ask follow-up questions:
 | `show high issues` · `what's wrong on mobile?` · `typography issues at 1024` | Filtered issue list; click one to see it on the page |
 | `issue #3 at 375` | One issue with Original/Migrated close-ups and its fix |
 | `show all fixes` · `fixes for cards` | CSS merged per file, ready to copy |
+| `prompt for AEM Coder` | A prompt to paste into AEM Coder so it fixes the open issues (also *Copy prompt for AEM Coder* on the results card) |
 | `breakpoints` | Original vs migrated breakpoints, with a re-run at the mismatched widths |
 | `re-run` | Same comparison again, with the same breakpoints |
 | `download the PDF report` · `download html` | The report file (see below) |
@@ -76,6 +77,10 @@ Mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is in
 Keys: `←` `→` navigate · `F` needs fix · `A` approve · `N` next unreviewed · `1` `2` views · `Esc` clear.
 
 *Full page ↗* opens the same report full-screen, with the **Across breakpoints** matrix and **All fixes** tabs.
+
+## Prompt for AEM Coder
+
+*Copy prompt for AEM Coder* on the results card copies a prompt you paste straight into the AEM Coder chat. It contains the two URLs, the original's breakpoints, how to work (block-scoped CSS, the original's media queries, checking each fix in the preview), and each open issue grouped by file with its Original and Migrated values and the affected widths. It also has the suggested CSS and the content issues to fix in the importer. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
 
 ## Downloadable report
 

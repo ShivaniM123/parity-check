@@ -145,8 +145,6 @@ label > input, label > textarea { margin-top: 4px; font-weight: 400; }
 .chip.width.extra { background: #fff4e5; }
 .chip button { border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 0 0 2px; }
 .add-row { display: flex; gap: 8px; margin-top: 8px; max-width: 360px; }
-.toggles { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
-.toggles label { font-weight: 400; display: flex; gap: 6px; align-items: center; }
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
 
 .history-list { display: flex; flex-direction: column; gap: 8px; }

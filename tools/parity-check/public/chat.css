@@ -78,7 +78,6 @@ body.route-chat .nav-chat { display: none; }
 /* setup card */
 .setup-msg .bars { height: 84px; margin: 6px 0 10px; }
 .setup-msg .bar { flex-basis: 46px; }
-.setup-msg .toggles { gap: 14px; font-size: 13px; }
 .setup-msg .chips { gap: 5px; }
 .add-inline input { width: 84px; padding: 2px 8px; border-radius: 999px; font-size: 12.5px; }
 
@@ -134,6 +133,9 @@ body.route-chat .nav-chat { display: none; }
 .ff-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
 .ff-head .copy { margin-left: auto; }
 .fix-file pre { margin: 0; background: #f8f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; font-size: 12px; line-height: 1.55; max-height: 360px; }
+.prompt-preview { margin-top: 10px; }
+.prompt-preview summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.prompt-preview pre { margin: 8px 0 0; background: #f8f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.55; max-height: 360px; overflow: auto; white-space: pre-wrap; }
 
 /* ---------- composer ---------- */
 .composer { padding: 8px 20px 16px; background: linear-gradient(to bottom, transparent, var(--bg) 30%); }
@@ -196,7 +198,6 @@ body.route-chat .nav-chat { display: none; }
 .preset:hover { border-color: var(--accent); color: var(--accent); }
 .preset.on { border-style: solid; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .bp-block .f-note { margin: 0; }
-.form-msg .toggles { align-items: center; }
 .f-err { font-size: 12px; color: var(--high); font-weight: 400; }
 .f-err:empty { display: none; }
 .form-msg input[aria-invalid='true'] { border-color: var(--high); }

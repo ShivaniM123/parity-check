@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 import { detectBreakpoints, testWidths } from './lib/breakpoints.js';
 import { runComparison } from './lib/run.js';
 import { buildExport, exportName } from './lib/export.js';
+import { buildFixPrompt } from './lib/prompt.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(ROOT, '..', '..');
@@ -204,7 +205,6 @@ const server = http.createServer(async (req, res) => {
       const sites = await loadSites();
       sites[body.host] = {
         breakpoints: body.breakpoints || [],
-        widthOptions: body.widthOptions || {},
         extraWidths: body.extraWidths || [],
         hideSelectors: body.hideSelectors || [],
         updated: new Date().toISOString(),
@@ -259,6 +259,19 @@ const server = http.createServer(async (req, res) => {
       } else {
         send(res, 200, existsSync(file) ? JSON.parse(await readFile(file, 'utf8')) : { statuses: {} });
       }
+      return;
+    }
+    m = p.match(/^\/api\/reports\/([\w-]+)\/fix-prompt$/);
+    if (m) {
+      // prompt for AEM Coder: open issues (approved ones left out) and suggested CSS
+      const dir = join(REPORTS, m[1]);
+      if (!existsSync(join(dir, 'report.json'))) { send(res, 404, { error: 'unknown report' }); return; }
+      const report = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8'));
+      const reviewFile = join(dir, 'review.json');
+      const statuses = existsSync(reviewFile) ? JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {} : {};
+      const prompt = buildFixPrompt(report, statuses, REPO_ROOT);
+      await writeFile(join(dir, 'fix-prompt.md'), prompt);
+      send(res, 200, prompt, 'text/markdown; charset=utf-8');
       return;
     }
     m = p.match(/^\/api\/reports\/([\w-]+)\/export\.(html|pdf)$/);

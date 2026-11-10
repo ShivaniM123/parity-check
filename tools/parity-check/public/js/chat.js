@@ -211,7 +211,8 @@ function summaryHtml(report) {
     ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map(issueLine).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
     <div class="actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
-      <button type="button" class="btn secondary" data-action="download" data-format="pdf" data-report="${esc(report.id)}">Download PDF report</button>
+      <button type="button" class="btn secondary" data-action="fix-prompt" data-report="${esc(report.id)}" title="Copy a prompt that tells AEM Coder how to fix these issues. Paste it into the AEM Coder chat.">Copy prompt for AEM Coder</button>
+      <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
       <button type="button" class="btn ghost" data-action="download" data-format="html" data-report="${esc(report.id)}">HTML report</button>
       <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
     </div></div>`;
@@ -253,6 +254,20 @@ function fixesHtml(report, file) {
       <pre>${esc(f.css)}</pre></div>`).join('')}</div>`;
 }
 
+const fixPrompt = async (id) => {
+  const res = await fetch(`/api/reports/${id}/fix-prompt`);
+  if (!res.ok) throw new Error('Could not build the prompt');
+  return res.text();
+};
+
+async function promptHtml(reportId) {
+  const text = await fixPrompt(reportId);
+  return `<div class="card-msg">
+    <p>Here's a prompt for <b>AEM Coder</b>. Copy it and paste it into the AEM Coder chat. It lists every open issue with the original and migrated values, the files to change and the suggested CSS. Differences you approved are left out.</p>
+    <div class="actions"><button type="button" class="btn primary copy" data-copy="${esc(text)}">Copy prompt</button></div>
+    <details class="prompt-preview"><summary>Preview the prompt</summary><pre>${esc(text)}</pre></details></div>`;
+}
+
 function breakpointsHtml(report) {
   const mm = report.breakpointMismatch || { missingInMigrated: [], extraInMigrated: [] };
   return `<div class="card-msg"><dl class="kv">
@@ -271,6 +286,7 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
+  <li><code>prompt for AEM Coder</code>: a prompt you paste into AEM Coder so it fixes the open issues</li>
   <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run</code> · <code>history</code></li></ul>
   <p>Switch on <b>Visual parity</b> (top right) to see both pages side by side with every issue marked.</p>`;
 
@@ -295,6 +311,7 @@ async function bodyFor(msg) {
     }
     case 'fixes': return fixesHtml(await loadReport(d.reportId), d.file);
     case 'breakpoints': return breakpointsHtml(await loadReport(d.reportId));
+    case 'prompt': return promptHtml(d.reportId);
     case 'history': return `<div class="card-msg">${d.list.length ? '<p>Recent comparisons. Click one to open it here.</p>' : ''}<div class="history-list">${historyItems(d.list.slice(0, 10))}</div></div>`;
     default: return '';
   }
@@ -766,6 +783,7 @@ async function handle(text) {
     return;
   }
   if (/breakpoint/.test(t)) { add('bot', 'breakpoints', { reportId: report.id }); return; }
+  if (/prompt|coder|agent/.test(t)) { add('bot', 'prompt', { reportId: report.id }); return; }
   if (issueNum) {
     const ws = widthsFor(report, t, nums);
     const order = ws.length ? ws : [state.visualWidth, ...report.widths].filter(Boolean);
@@ -902,6 +920,11 @@ function onAction(e) {
   if (action === 'close-visual') setVisual(false);
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
+  }
+  if (action === 'fix-prompt') {
+    // fetch first, then copy: the click still counts as the user gesture for the clipboard
+    fixPrompt(el.dataset.report).then((text) => copy(text, el, 'Copied: paste it into AEM Coder'))
+      .catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
   if (el.classList.contains('copy')) copy(el.dataset.copy, el);
 }
