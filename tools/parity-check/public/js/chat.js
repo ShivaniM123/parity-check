@@ -919,7 +919,7 @@ async function renderResult(force = false) {
   try { report = await loadReport(state.reportId); } catch (e) { el.innerHTML = ''; return; }
   if (resultShown !== report.id) return; // another report was opened meanwhile
   const s = report.summary;
-  const top = topIssues(report, 6);
+  const top = topIssues(report, Infinity); // the list fills the panel and scrolls; quick actions stay at the bottom
   const tile = (sev, icon, label) => `<button type="button" class="sev-tile ${sev}" data-action="say" data-text="Show ${sev} issues">
     <span class="st-icon">${icon}</span><b>${s[sev]}</b><span>${label}</span></button>`;
   el.innerHTML = `<div class="rp-card">
@@ -930,12 +930,12 @@ async function renderResult(force = false) {
     ${top.length ? `<ol class="top-issues">${top.map((i) => `<li><button type="button" class="ti sev-${i.severity}" data-action="issue" data-id="${esc(i.id)}" data-report="${esc(report.id)}">
       <span class="ti-n">${i.n}</span><span class="ti-title">${esc(i.title)}</span><span class="ti-w">${i.width}px</span></button></li>`).join('')}</ol>` : '<p class="muted">No issues. 🎉</p>'}
 
-    <h3>Quick actions</h3>
+    <div class="rp-actions"><h3>Quick actions</h3>
     <div class="quick">
       <button type="button" class="qa" data-action="download" data-format="pdf" data-report="${esc(report.id)}">${ICON.download}<span>Download report</span></button>
       <button type="button" class="qa" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">${ICON.copy}<span>Copy for AEM Coder</span></button>
       <button type="button" class="qa" data-action="new-chat" title="Start a fresh chat with an empty comparison form">${ICON.rerun}<span>Run new comparison</span></button>
-    </div>
+    </div></div>
   </div>`;
 }
 

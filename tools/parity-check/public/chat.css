@@ -272,7 +272,7 @@ body.route-chat .nav-chat { display: none; }
 }
 
 /* ---------- comparison summary (right panel) ---------- */
-.rp-card { display: flex; flex-direction: column; gap: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
+.rp-card { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: var(--shadow); }
 .rp-card h3 { margin: 0; font-size: 17px; }
 .rp-card > .muted { margin: 0; font-size: 13px; }
 .rp-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; }
@@ -290,7 +290,7 @@ body.route-chat .nav-chat { display: none; }
 .rp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: -6px; }
 .rp-row .btn.link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .rp-row .btn.link svg { width: 16px; height: 16px; }
-.top-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.top-issues { list-style: none; margin: 0 -6px; padding: 0; display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 120px; overflow-y: auto; }
 .ti { font: inherit; width: 100%; display: flex; align-items: flex-start; gap: 12px; padding: 8px 6px; border: 0; border-radius: 10px; background: none; text-align: left; cursor: pointer; color: var(--text); }
 .ti:hover { background: var(--bg); }
 .ti-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; margin-top: 1px; }
@@ -301,7 +301,9 @@ body.route-chat .nav-chat { display: none; }
 .ti-w { flex: none; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--high-soft); color: var(--high); }
 .ti.sev-medium .ti-w { background: var(--medium-soft); color: var(--medium); }
 .ti.sev-low .ti-w { background: var(--low-soft); color: var(--low); }
-.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: -6px; }
+.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* pinned to the bottom of the panel, under the scrolling issue list */
+.rp-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
 .qa { font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 96px; padding: 12px 8px; border: 1px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; color: var(--text); font-size: 13px; text-align: center; line-height: 1.3; }
 .qa:hover { border-color: var(--accent); background: #fafbff; }
 .qa svg { width: 22px; height: 22px; color: var(--accent); }
