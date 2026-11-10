@@ -265,7 +265,7 @@ const server = http.createServer(async (req, res) => {
       const report = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8'));
       const reviewFile = join(dir, 'review.json');
       const statuses = existsSync(reviewFile) ? JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {} : {};
-      const prompt = buildFixPrompt(report, statuses, REPO_ROOT);
+      const prompt = buildFixPrompt(report, statuses);
       await writeFile(join(dir, 'fix-prompt.md'), prompt);
       send(res, 200, prompt, 'text/markdown; charset=utf-8');
       return;

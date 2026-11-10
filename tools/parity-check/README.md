@@ -88,7 +88,7 @@ Keys: `←` `→` navigate · `F` needs fix · `A` approve · `N` next unreviewe
 
 *Copy for AEM Coder* on the results card copies the whole prompt in one click. Paste it into the AEM Coder chat (⌘V) and send. Nothing needs editing. AEM Coder runs in its own workspace, not on the machine running this tool, so the prompt carries everything it needs and doesn't point to local report files. To see the prompt first, type `prompt for AEM Coder` in the chat.
 
-The prompt contains the two URLs, the original's breakpoints, how to work (block-scoped CSS, the original's media queries, checking each fix in the preview), and each open issue grouped by file with its Original and Migrated values and the affected widths. It also has the suggested CSS and the content issues to fix in the importer. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
+The prompt contains the two URLs, the original's breakpoints, a few rules (block-scoped CSS, don't edit `scripts/aem.js`, layout changes at the original's breakpoints, check the preview) and each open issue as plain facts: the element, the property, the Original and Migrated values and the widths, grouped by block. It carries no suggested CSS or fix advice. The generated rules are often too specific or wrong for the codebase, and AEM Coder fixes better from the facts and its own reading of the blocks. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
 
 ## Downloadable report
 

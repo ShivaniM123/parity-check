@@ -327,7 +327,7 @@ async function sendToCoder(reportId, btn) {
     }
     const n = ((await text).match(/^- \[/gm) || []).length;
     btn.textContent = 'Copied ✓';
-    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'} with the original and migrated values, the files to change and the suggested CSS. Approved differences are left out.</p>`);
+    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'}, each with the element, the original and migrated values and the widths. No suggested fixes: AEM Coder works out the fix from its code. Approved differences are left out.</p>`);
   } catch (err) {
     btn.innerHTML = old;
     say(`<p class="err">Couldn't copy: ${esc(err.message)}. Type <code>prompt for AEM Coder</code> to copy it from the preview.</p>`);
@@ -340,7 +340,7 @@ async function sendToCoder(reportId, btn) {
 async function promptHtml(reportId) {
   const text = await fixPrompt(reportId);
   return `<div class="card-msg">
-    <p>Here's a prompt for <b>AEM Coder</b>. Copy it and paste it into the AEM Coder chat. It lists every open issue with the original and migrated values, the files to change and the suggested CSS. Differences you approved are left out.</p>
+    <p>Here's a prompt for <b>AEM Coder</b>. Copy it and paste it into the AEM Coder chat. It lists every open issue with the element, the original and migrated values and the widths, without suggested fixes. Differences you approved are left out.</p>
     <div class="actions"><button type="button" class="btn primary copy" data-copy="${esc(text)}">Copy prompt</button></div>
     <details class="prompt-preview"><summary>Preview the prompt</summary><pre>${esc(text)}</pre></details></div>`;
 }
