@@ -25,7 +25,7 @@ Start a comparison either way:
   - *Common* presets (480, 600, 768, 900, 1024, 1200, 1280, 1440) add or remove a breakpoint in one click;
   - *Detect from original* adds the breakpoints found in the original's CSS to your list, and you remove any you don't need.
 
-  If you leave it empty, breakpoints are detected when you run. There are also toggles to also test mobile 375 / edges (breakpoint − 1px) / desktop 1440, and optional selectors to ignore (chat widgets, ads, live feeds). A live preview shows the widths that will be tested.
+  If you leave it empty, breakpoints are detected when you run. Every comparison also covers the smallest phone (375px) and a wide desktop (1440px), so the layout below your first breakpoint is checked too. There are optional selectors to ignore (chat widgets, ads, live feeds). A live preview shows the widths that will be tested.
 
   URLs are forgiving: `www.site.com/page` becomes `https://www.site.com/page` (and `localhost:3000/x` becomes `http://…`), and each URL is checked as you leave the field. Recently used pages are suggested as you type.
 - **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. If you paste one URL, the chat asks for the other.
@@ -35,9 +35,9 @@ The migrated page can also be `http://localhost:3000/{path}` while running `aem 
 **Breakpoint detection** reads every `@media` rule from all the original's stylesheets, cross-origin ones included. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood.
 
 **On the setup card**, before running, breakpoints are editable chips: click × to remove one, type in *+ breakpoint* to add one, or click a detected bar. You can also type:
-`add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `add edge widths` · `run`.
+`add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `run`.
 
-**It remembers each site.** Every run stores the breakpoints, *Also test* toggles and ignored elements per host in `sites.json`. The next time you enter an original URL from that site, they're filled in (with a note, so you can edit them), along with the migrated page it was last compared with. There's no "save" step. Commit `sites.json` to share breakpoints with the team.
+**It remembers each site.** Every run stores the breakpoints and ignored elements per host in `sites.json`. The next time you enter an original URL from that site, they're filled in (with a note, so you can edit them), along with the migrated page it was last compared with. There's no "save" step. Commit `sites.json` to share breakpoints with the team.
 
 **While it runs**, each tested width shows as a step (pending → working → ✓ with its score), with an estimate of the time left. The browser tab title shows the progress (`(2/4) Comparing…`, then `✓ Comparison done`), so you can work elsewhere.
 

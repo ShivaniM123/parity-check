@@ -9,6 +9,8 @@ import { issueBody, mountWorkspace } from './visual.js';
  */
 
 const STORE = 'parity-chat-v1';
+// every comparison also covers the smallest phone and a wide desktop, besides the breakpoints
+const WIDTH_OPTS = { base: true, edges: false, wide: true };
 const DEFAULT_HIDE = ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '.cookie-banner', '[id*="cookie" i][class*="banner" i]', '#usercentrics-root'];
 const URL_RE = /\b(?:https?:\/\/|localhost:\d+)[^\s,<>"')]+/gi;
 
@@ -49,7 +51,7 @@ function setupHtml(msg) {
   const d = msg.data;
   if (d.status === 'detecting') return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}<p class="status busy">${spinner}Reading the original page's stylesheets to find its breakpoints…</p></div>`;
   if (d.status === 'error') return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}<p class="err">${esc(d.error)}</p></div>`;
-  const widths = testWidths(d.breakpoints, d.opts, d.extra);
+  const widths = testWidths(d.breakpoints, WIDTH_OPTS, d.extra);
   if (d.status === 'started') {
     return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}
       <p class="muted">Breakpoints <b>${d.breakpoints.join(', ') || '–'}</b> · testing <b>${widths.join(', ')}px</b></p></div>`;
@@ -69,9 +71,6 @@ function setupHtml(msg) {
       <div class="chips">${d.breakpoints.map((b) => `<span class="chip">${b}px<button type="button" data-action="bp-remove" data-mid="${msg.id}" data-px="${b}" aria-label="Remove ${b}">×</button></span>`).join('') || '<span class="muted">none</span>'}
         <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ breakpoint" data-mid="${msg.id}" data-list="breakpoints" aria-label="Add a breakpoint"></span>
         ${detected.length ? '' : `<button type="button" class="btn link" data-action="detect" data-mid="${msg.id}">Detect from original</button>`}</div></div>
-    <div class="toggles">
-      ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" data-action="opt" data-mid="${msg.id}" data-k="${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
-    </div>
     <div class="field-row"><span class="field-label">Test widths</span>
       <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}</div></div>
     <div class="actions">
@@ -82,7 +81,7 @@ function setupHtml(msg) {
 const numList = (s) => [...new Set(String(s || '').split(/[^\d]+/).map(Number).filter((n) => n >= 280 && n <= 3840))].sort((a, b) => a - b);
 
 function formWidths(d) {
-  return testWidths(numList(d.breakpoints), d.opts);
+  return testWidths(numList(d.breakpoints), WIDTH_OPTS);
 }
 
 // one-click breakpoints most sites use
@@ -129,9 +128,6 @@ function formHtml(msg) {
       <input type="url" name="migrated" required list="recent-migrated" autocomplete="off" placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}">
       <span class="f-err" aria-live="polite"></span></label>
     ${bpBlockHtml(d, id)}
-    <div class="toggles"><span class="muted">Also test:</span>
-      ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" name="opt-${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
-    </div>
     <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
       <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
     <p class="f-preview">Will test <b class="f-widths">${formWidths(d).length ? `${formWidths(d).join(', ')}px` : '…'}</b></p>
@@ -271,7 +267,7 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <p><b>To start</b>, use the <b>Form</b> button (original URL, migrated URL, breakpoints), or type it:</p><ul>
   <li><code>compare https://www.example.com/about with https://main--site--org.aem.page/about</code>: I detect the breakpoints from the original</li>
   <li><code>… breakpoints 768, 1024, 1280</code>: use your breakpoints and run right away</li>
-  <li>Before running: <code>add breakpoint 1280</code> · <code>remove 640</code> · <code>breakpoints 600, 900</code> · <code>add edge widths</code></li></ul>
+  <li>Before running: <code>add breakpoint 1280</code> · <code>remove 640</code> · <code>breakpoints 600, 900</code></li></ul>
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
@@ -357,7 +353,7 @@ function update(msg) {
  * otherwise saved values for the site, otherwise they're detected from the original.
  */
 async function startComparison(original, migrated, {
-  widths = [], breakpoints = [], opts, ignore = [], autoRun = false,
+  widths = [], breakpoints = [], ignore = [], autoRun = false,
 } = {}) {
   state.pending = {};
   const msg = add('bot', 'setup', {
@@ -368,7 +364,6 @@ async function startComparison(original, migrated, {
     breakpoints: [],
     extra: widths,
     ignore,
-    opts: { base: true, edges: false, wide: true, ...(opts || {}) },
   });
   const d = msg.data;
   try {
@@ -380,7 +375,6 @@ async function startComparison(original, migrated, {
       Object.assign(d, {
         breakpoints: saved.breakpoints,
         clusters: saved.breakpoints.map((px) => ({ px, count: 1 })),
-        opts: { ...d.opts, ...(saved.widthOptions || {}) },
         extra: [...new Set([...(saved.extraWidths || []), ...widths])],
         saved: hostOf(original),
         status: 'ready',
@@ -463,7 +457,7 @@ function watchJob(msg) {
 async function run(setupMsg) {
   const d = setupMsg.data;
   if (d.status !== 'ready') return;
-  const widths = testWidths(d.breakpoints, d.opts, d.extra);
+  const widths = testWidths(d.breakpoints, WIDTH_OPTS, d.extra);
   if (!widths.length) { say('<p>Add at least one breakpoint or width first.</p>'); return; }
   d.status = 'started';
   update(setupMsg);
@@ -478,7 +472,7 @@ async function run(setupMsg) {
     // remember this site's breakpoints (and ignored elements) for next time: no "save" step
     if (d.breakpoints.length) {
       api('/api/sites', {
-        host: hostOf(d.original), breakpoints: d.breakpoints, widthOptions: d.opts, hideSelectors: [...DEFAULT_HIDE, ...(d.ignore || [])],
+        host: hostOf(d.original), breakpoints: d.breakpoints, hideSelectors: [...DEFAULT_HIDE, ...(d.ignore || [])],
       }).catch(() => {});
     }
     const msg = add('bot', 'progress', {
@@ -503,7 +497,7 @@ async function rerun(extraWidths = []) {
   const extra = [...new Set([...report.widths.filter((w) => !report.breakpoints.includes(w)), ...extraWidths])];
   const ignore = (report.options?.hideSelectors || []).filter((s) => !DEFAULT_HIDE.includes(s));
   await startComparison(report.original, report.migrated, {
-    widths: extra, breakpoints: report.breakpoints, ignore, opts: { base: false, wide: false }, autoRun: true,
+    widths: extra, breakpoints: report.breakpoints, ignore, autoRun: true,
   });
 }
 
@@ -563,8 +557,6 @@ function addForm(prefill = {}) {
     migrated: '',
     breakpoints: [],
     ignore: '',
-    save: false,
-    opts: { base: true, edges: false, wide: true },
     status: 'editing',
     ...prefill,
   });
@@ -593,7 +585,6 @@ async function submitForm(msg) {
   add('user', 'text', { text: `Compare ${d.original} with ${d.migrated}${breakpoints.length ? `, breakpoints ${breakpoints.join(', ')}` : ''}` });
   await startComparison(d.original, d.migrated, {
     breakpoints,
-    opts: d.opts,
     ignore: String(d.ignore || '').split('\n').map((s) => s.trim()).filter(Boolean),
     autoRun: true,
   });
@@ -739,7 +730,6 @@ async function handle(text) {
       say(`<p>Breakpoints are now <b>${sd.breakpoints.join(', ')}</b>px.</p>`);
       return;
     }
-    if (/edge/.test(t)) { setup.data.opts.edges = true; update(setup); say('<p>Added the edge widths (each breakpoint − 1px).</p>'); return; }
     if (nums.length && /\b(add|also|include|test|plus)\b/.test(t)) {
       setup.data.extra = [...new Set([...setup.data.extra, ...nums])];
       update(setup);
@@ -825,7 +815,7 @@ function renderSuggestions() {
   let items;
   const running = state.messages.some((m) => m.type === 'progress' && m.data.status === 'running');
   if (running) items = ['How does it work?'];
-  else if (pendingSetup()) items = ['Run comparison', 'Add breakpoint 1280', 'Add edge widths'];
+  else if (pendingSetup()) items = ['Run comparison', 'Add breakpoint 1280'];
   else if (state.reportId) {
     items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'New comparison']; // the summary card has the download and visual buttons
   } else items = ['New comparison', 'Try the demo', 'How does it work?', 'Show history'];
@@ -942,13 +932,6 @@ export function mountChat(app, params) {
   root = app.querySelector('.chat-app');
   root.addEventListener('click', onAction);
   actions.querySelector('#visual-toggle').addEventListener('change', (e) => setVisual(e.target.checked));
-  root.addEventListener('change', (e) => {
-    const el = e.target;
-    if (el.dataset.action === 'opt') {
-      const msg = state.messages.find((m) => m.id === Number(el.dataset.mid));
-      if (msg?.data.status === 'ready') { msg.data.opts[el.dataset.k] = el.checked; update(msg); }
-    }
-  });
   root.addEventListener('keydown', (e) => {
     const el = e.target;
     if (el.matches('.bp-add-input') && e.key === 'Enter') {
@@ -975,10 +958,8 @@ export function mountChat(app, params) {
     if (!card) return;
     const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
     if (!msg) return;
-    const { name, value, checked } = e.target;
-    if (name?.startsWith('opt-')) msg.data.opts[name.slice(4)] = checked;
-    else if (name === 'save') msg.data.save = checked;
-    else if (name) msg.data[name] = value;
+    const { name, value } = e.target;
+    if (name) msg.data[name] = value;
     const ws = formWidths(msg.data);
     card.querySelector('.f-widths').textContent = ws.length ? `${ws.join(', ')}px` : '…';
     save();
@@ -1009,7 +990,6 @@ export function mountChat(app, params) {
       Object.assign(d, {
         breakpoints: saved.breakpoints,
         note: `Using the breakpoints you used last time for ${hostOf(url)}. Edit them if needed.`,
-        opts: { ...d.opts, ...(saved.widthOptions || {}) },
         ignore: d.ignore || custom.join('\n'),
       });
       changed = true;
