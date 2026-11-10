@@ -9,8 +9,6 @@ import { issueBody, mountWorkspace } from './visual.js';
  */
 
 const STORE = 'parity-chat-v1';
-// every comparison also covers the smallest phone and a wide desktop, besides the breakpoints
-const WIDTH_OPTS = { base: true, edges: false, wide: true };
 const DEFAULT_HIDE = ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '.cookie-banner', '[id*="cookie" i][class*="banner" i]', '#usercentrics-root'];
 const URL_RE = /\b(?:https?:\/\/|localhost:\d+)[^\s,<>"')]+/gi;
 
@@ -51,7 +49,7 @@ function setupHtml(msg) {
   const d = msg.data;
   if (d.status === 'detecting') return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}<p class="status busy">${spinner}Reading the original page's stylesheets to find its breakpoints…</p></div>`;
   if (d.status === 'error') return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}<p class="err">${esc(d.error)}</p></div>`;
-  const widths = testWidths(d.breakpoints, WIDTH_OPTS, d.extra);
+  const widths = testWidths(d.breakpoints, d.extra);
   if (d.status === 'started') {
     return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}
       <p class="muted">Breakpoints <b>${d.breakpoints.join(', ') || '–'}</b> · testing <b>${widths.join(', ')}px</b></p></div>`;
@@ -72,7 +70,7 @@ function setupHtml(msg) {
         <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ breakpoint" data-mid="${msg.id}" data-list="breakpoints" aria-label="Add a breakpoint"></span>
         ${detected.length ? '' : `<button type="button" class="btn link" data-action="detect" data-mid="${msg.id}">Detect from original</button>`}</div></div>
     <div class="field-row"><span class="field-label">Test widths</span>
-      <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}</div></div>
+      <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('') || '<span class="muted">add a breakpoint first</span>'}</div></div>
     <div class="actions">
       <button type="button" class="btn primary" data-action="run" data-mid="${msg.id}">Run comparison</button>
     </div></div>`;
@@ -80,8 +78,11 @@ function setupHtml(msg) {
 
 const numList = (s) => [...new Set(String(s || '').split(/[^\d]+/).map(Number).filter((n) => n >= 280 && n <= 3840))].sort((a, b) => a - b);
 
+// the form's "Will test …" line
+const previewWidths = (d) => (numList(d.breakpoints).length ? `${numList(d.breakpoints).join(', ')}px` : 'the breakpoints detected from the original');
+
 function formWidths(d) {
-  return testWidths(numList(d.breakpoints), WIDTH_OPTS);
+  return testWidths(numList(d.breakpoints));
 }
 
 // one-click breakpoints most sites use
@@ -107,7 +108,7 @@ function bpBlockHtml(d, id) {
     <div class="bp-presets"><span class="muted">Common:</span>
       ${PRESETS.map((p) => `<button type="button" class="preset ${bps.includes(p) ? 'on' : ''}" data-action="form-bp-preset" data-mid="${id}" data-px="${p}" aria-pressed="${bps.includes(p)}">${p}</button>`).join('')}
     </div>
-    ${d.note ? `<p class="f-note">${esc(d.note)}</p>` : ''}
+    ${d.note && (bps.length || d.noteEmpty) ? `<p class="f-note">${esc(d.note)}</p>` : ''}
   </fieldset>`;
 }
 
@@ -116,7 +117,7 @@ function formHtml(msg) {
   const d = msg.data;
   if (d.status === 'submitted') {
     return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}
-      <p class="muted">${numList(d.breakpoints).length ? `Breakpoints <b>${numList(d.breakpoints).join(', ')}</b>` : 'Breakpoints detected from the original'} · testing <b>${formWidths(d).join(', ') || '…'}px</b></p></div>`;
+      <p class="muted">${numList(d.breakpoints).length ? `Testing your breakpoints <b>${formWidths(d).join(', ')}px</b>` : 'Testing the breakpoints detected from the original'}</p></div>`;
   }
   const { id } = msg;
   return `<form class="card-msg form-msg" data-mid="${id}" novalidate>
@@ -130,7 +131,7 @@ function formHtml(msg) {
     ${bpBlockHtml(d, id)}
     <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
       <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
-    <p class="f-preview">Will test <b class="f-widths">${formWidths(d).length ? `${formWidths(d).join(', ')}px` : '…'}</b></p>
+    <p class="f-preview">Will test <b class="f-widths">${previewWidths(d)}</b></p>
     ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
     <div class="actions">
       <button type="submit" class="btn primary">Run comparison</button>
@@ -211,9 +212,8 @@ function summaryHtml(report) {
     ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map(issueLine).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
     <div class="actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
-      <button type="button" class="btn secondary" data-action="fix-prompt" data-report="${esc(report.id)}" title="Copy a prompt that tells AEM Coder how to fix these issues. Paste it into the AEM Coder chat.">Copy prompt for AEM Coder</button>
+      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Hand the open issues to AEM Coder, which works in this project">Send to AEM Coder</button>
       <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
-      <button type="button" class="btn ghost" data-action="download" data-format="html" data-report="${esc(report.id)}">HTML report</button>
       <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
     </div></div>`;
 }
@@ -260,6 +260,31 @@ const fixPrompt = async (id) => {
   return res.text();
 };
 
+// what to say in AEM Coder: it finds the issues in the file this tool just wrote
+const CODER_ASK = 'Fix the parity issues';
+
+/** Saves the prompt where AEM Coder reads it, so nothing has to be pasted. */
+async function sendToCoder(reportId, btn) {
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res = await fetch(`/api/reports/${reportId}/fix-prompt`, { method: 'POST' });
+    const out = await res.json();
+    if (!res.ok) throw new Error(out.error || 'Could not send the issues');
+    navigator.clipboard?.writeText(CODER_ASK).catch(() => {});
+    btn.textContent = 'Sent ✓';
+    say(`<p><b>Sent to AEM Coder.</b> ${out.issues} open issue${out.issues === 1 ? '' : 's'} with the original and migrated values, the files to change and the suggested CSS. Approved differences are left out.</p>
+      <p>In the AEM Coder chat, just say <b>${CODER_ASK}</b>. It picks them up from <code>${esc(out.file)}</code>. Send again after a new comparison or review, and it gets the latest.</p>`);
+  } catch (err) {
+    btn.textContent = old;
+    say(`<p class="err">${esc(err.message)}</p>`);
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (btn.textContent === 'Sent ✓') btn.textContent = old; }, 2500);
+  }
+}
+
 async function promptHtml(reportId) {
   const text = await fixPrompt(reportId);
   return `<div class="card-msg">
@@ -286,7 +311,7 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
-  <li><code>prompt for AEM Coder</code>: a prompt you paste into AEM Coder so it fixes the open issues</li>
+  <li><code>send to AEM Coder</code>: hand the open issues to AEM Coder, then say <i>Fix the parity issues</i> there · <code>prompt for AEM Coder</code>: see or copy the prompt</li>
   <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run</code> · <code>history</code></li></ul>
   <p>Switch on <b>Visual parity</b> (top right) to see both pages side by side with every issue marked.</p>`;
 
@@ -474,8 +499,8 @@ function watchJob(msg) {
 async function run(setupMsg) {
   const d = setupMsg.data;
   if (d.status !== 'ready') return;
-  const widths = testWidths(d.breakpoints, WIDTH_OPTS, d.extra);
-  if (!widths.length) { say('<p>Add at least one breakpoint or width first.</p>'); return; }
+  const widths = testWidths(d.breakpoints, d.extra);
+  if (!widths.length) { say('<p>Add at least one breakpoint first. Only the breakpoints you choose are tested.</p>'); return; }
   d.status = 'started';
   update(setupMsg);
   try {
@@ -511,7 +536,7 @@ const pendingSetup = () => {
 
 async function rerun(extraWidths = []) {
   const report = await loadReport(state.reportId);
-  const extra = [...new Set([...report.widths.filter((w) => !report.breakpoints.includes(w)), ...extraWidths])];
+  const extra = [...new Set(extraWidths)];
   const ignore = (report.options?.hideSelectors || []).filter((s) => !DEFAULT_HIDE.includes(s));
   await startComparison(report.original, report.migrated, {
     widths: extra, breakpoints: report.breakpoints, ignore, autoRun: true,
@@ -639,7 +664,6 @@ async function renderVisual(focus = {}) {
         <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>
       <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
         <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
-      <a class="btn tiny" href="#/report/${esc(report.id)}" title="Open the full report page">Full page ↗</a>
       <button type="button" class="btn tiny" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF</button>
       <button type="button" class="btn tiny back-chat" data-action="close-visual" title="Hide visual parity and return to the chat">← Back to chat</button>
     </div>
@@ -763,11 +787,9 @@ async function handle(text) {
   const report = await loadReport(state.reportId);
 
   if (/download|export|pdf|save report|share/.test(t)) {
-    const format = /html/.test(t) && !/pdf/.test(t) ? 'html' : 'pdf';
-    say(`<p>Preparing the ${format.toUpperCase()} report: every issue with annotated Original/Migrated screenshots, plus all fixes.</p>
-      <div class="actions"><button type="button" class="btn secondary" data-action="download" data-format="pdf" data-report="${esc(report.id)}">Download PDF</button>
-      <button type="button" class="btn ghost" data-action="download" data-format="html" data-report="${esc(report.id)}">Download HTML</button></div>`);
-    downloadReport(report.id, format).catch((e) => say(`<p class="err">${esc(e.message)}</p>`));
+    say(`<p>Preparing the PDF report: every issue with annotated Original/Migrated screenshots, plus all fixes.</p>
+      <div class="actions"><button type="button" class="btn secondary" data-action="download" data-format="pdf" data-report="${esc(report.id)}">Download PDF</button></div>`);
+    downloadReport(report.id, 'pdf').catch((e) => say(`<p class="err">${esc(e.message)}</p>`));
     return;
   }
   if (/\b(hide|close|turn off|off)\b.*visual|visual.*\b(off|hide|close)\b/.test(t)) { setVisual(false); say('<p>Visual parity hidden.</p>'); return; }
@@ -783,6 +805,10 @@ async function handle(text) {
     return;
   }
   if (/breakpoint/.test(t)) { add('bot', 'breakpoints', { reportId: report.id }); return; }
+  if (/\bsend\b.*(coder|agent)/.test(t)) {
+    say(`<div class="actions"><button type="button" class="btn primary" data-action="send-coder" data-report="${esc(report.id)}">Send to AEM Coder</button></div>`);
+    return;
+  }
   if (/prompt|coder|agent/.test(t)) { add('bot', 'prompt', { reportId: report.id }); return; }
   if (issueNum) {
     const ws = widthsFor(report, t, nums);
@@ -904,6 +930,7 @@ function onAction(e) {
         note: det.suggested.length
           ? `Detected ${det.suggested.join(', ')}px from ${det.mediaRules} media rules on the original${added.length ? '' : ' (already in your list)'}. Remove any you don't need.`
           : 'No media-query breakpoints found on the original. Add your own.',
+        noteEmpty: !det.suggested.length, // this note is about an empty list, so keep it showing
         bpError: '',
       });
     }).catch((err) => { d.bpError = `Couldn't read the original: ${err.message}`; }).finally(() => update(msg));
@@ -921,11 +948,7 @@ function onAction(e) {
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
-  if (action === 'fix-prompt') {
-    // fetch first, then copy: the click still counts as the user gesture for the clipboard
-    fixPrompt(el.dataset.report).then((text) => copy(text, el, 'Copied: paste it into AEM Coder'))
-      .catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
-  }
+  if (action === 'send-coder') sendToCoder(el.dataset.report, el); // eslint-disable-line no-use-before-define
   if (el.classList.contains('copy')) copy(el.dataset.copy, el);
 }
 
@@ -935,7 +958,7 @@ export function mountChat(app, params) {
   const actions = document.getElementById('topbar-actions');
   actions.innerHTML = `<label class="switch" title="Show both pages side by side with issues marked">
       <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
-    <button type="button" class="btn tiny" id="new-chat">New chat</button>`;
+    <button type="button" class="nav-link" id="new-chat">New chat</button>`;
   app.innerHTML = `<div class="chat-app">
     <section class="chat-col">
       <div class="messages" aria-live="polite"></div>
@@ -983,8 +1006,7 @@ export function mountChat(app, params) {
     if (!msg) return;
     const { name, value } = e.target;
     if (name) msg.data[name] = value;
-    const ws = formWidths(msg.data);
-    card.querySelector('.f-widths').textContent = ws.length ? `${ws.join(', ')}px` : '…';
+    card.querySelector('.f-widths').textContent = previewWidths(msg.data);
     save();
   });
   // URL fields: fix up a missing https://, check as you leave the field, and recall
@@ -1013,6 +1035,7 @@ export function mountChat(app, params) {
       Object.assign(d, {
         breakpoints: saved.breakpoints,
         note: `Using the breakpoints you used last time for ${hostOf(url)}. Edit them if needed.`,
+        noteEmpty: false,
         ignore: d.ignore || custom.join('\n'),
       });
       changed = true;

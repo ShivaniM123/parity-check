@@ -56,8 +56,9 @@ h2 { font-size: 15px; margin: 20px 0 8px; }
 .brand svg { width: 22px; height: 22px; fill: none; stroke: var(--accent); stroke-width: 2; }
 .tagline { color: var(--muted); font-size: 13px; }
 .topbar nav { margin-left: auto; display: flex; gap: 4px; }
-.topbar nav a { color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
-.topbar nav a:hover { background: var(--bg); color: var(--text); }
+.topbar nav a, .topbar nav .nav-link { color: var(--text-2); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+.topbar nav .nav-link { border: 0; background: none; font: inherit; line-height: inherit; cursor: pointer; }
+.topbar nav a:hover, .topbar nav .nav-link:hover { background: var(--bg); color: var(--text); }
 
 #app { padding: 20px 24px 40px; max-width: 1800px; margin: 0 auto; }
 

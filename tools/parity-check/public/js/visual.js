@@ -472,7 +472,6 @@ export function mountWorkspace(container, report, result, { focusId, onWidthChan
         <div class="filters">
           ${['high', 'medium', 'low'].map((sv) => `<label class="fchip ${sv}"><input type="checkbox" value="${sv}" checked><span>${sv}</span><b>${result.stats[sv]}</b></label>`).join('')}
           <select class="cat-filter" aria-label="Category"><option value="">All types</option>${cats.map((c) => `<option value="${c}">${CATEGORY_LABEL[c] || c}</option>`).join('')}</select>
-          <label class="ctl chk hide-ok"><input type="checkbox" class="hide-approved"> Hide approved</label>
         </div>
       </div>
       <div class="issue-list"></div>
@@ -532,9 +531,8 @@ export function mountWorkspace(container, report, result, { focusId, onWidthChan
   const applyFilters = () => {
     const sev = [...container.querySelectorAll('.filters input[type=checkbox][value]:checked')].map((x) => x.value);
     const cat = container.querySelector('.cat-filter').value;
-    const hideOk = container.querySelector('.hide-approved').checked;
     const shown = result.issues
-      .filter((i) => sev.includes(i.severity) && (!cat || i.category === cat) && !(hideOk && statuses[i.id] === 'ok'))
+      .filter((i) => sev.includes(i.severity) && (!cat || i.category === cat))
       .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity] || a.n - b.n);
     viewer.order = shown.map((i) => i.id);
     viewer.visibleIds = new Set(viewer.order);

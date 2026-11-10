@@ -73,7 +73,6 @@ kbd { font: 600 10.5px/1 var(--mono); background: #f2f4f7; border: 1px solid var
 .rp-next { flex: none; color: var(--accent); border-color: #c9cefd; }
 .t-fix { color: var(--high); font-weight: 600; }
 .t-ok { color: #079455; font-weight: 600; }
-.hide-ok { font-size: 12px; margin-left: auto; }
 
 .review-actions { display: flex; gap: 6px; margin: 0 0 10px; }
 

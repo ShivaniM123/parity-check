@@ -39,7 +39,6 @@ async function renderReport(id, params) {
       </div>
       <div class="rh-actions">
         <a class="btn ghost" href="#/?open=${esc(report.id)}">Open in chat</a>
-        <button type="button" class="btn ghost" data-dl="html">HTML report</button>
         <button type="button" class="btn secondary" data-dl="pdf">Download PDF report</button>
       </div>
     </section>

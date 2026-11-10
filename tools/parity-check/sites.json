@@ -1,0 +1,17 @@
+{
+  "127.0.0.1:4300": {
+    "breakpoints": [
+      640,
+      1024
+    ],
+    "extraWidths": [],
+    "hideSelectors": [
+      "#onetrust-consent-sdk",
+      "#onetrust-banner-sdk",
+      ".cookie-banner",
+      "[id*=\"cookie\" i][class*=\"banner\" i]",
+      "#usercentrics-root"
+    ],
+    "updated": "2026-11-10T08:36:10.335Z"
+  }
+}

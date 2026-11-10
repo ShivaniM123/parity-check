@@ -19,4 +19,5 @@ Edge Delivery Services. Read a block first. Omissions are in the repo or known.
 - Merging `main` ships code; content publishes separately.
 - A PR without a `{branch}--parity-check--ShivaniM123.aem.page/{path}` link is rejected.
 - All committed files are served. Use `.hlxignore`.
+- "Fix the parity issues": follow `tools/parity-check/reports/aem-coder-fix.md` (written by the parity tool's *Send to AEM Coder*; the latest send wins).
 - Skills: `/plugin marketplace add adobe/skills`, then `aem-edge-delivery-services` (24 skills, incl. `docs-search`).

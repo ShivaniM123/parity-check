@@ -25,7 +25,7 @@ Start a comparison either way:
   - *Common* presets (480, 600, 768, 900, 1024, 1200, 1280, 1440) add or remove a breakpoint in one click;
   - *Detect from original* adds the breakpoints found in the original's CSS to your list, and you remove any you don't need.
 
-  If you leave it empty, breakpoints are detected when you run. Every comparison also covers the smallest phone (375px) and a wide desktop (1440px), so the layout below your first breakpoint is checked too. There are optional selectors to ignore (chat widgets, ads, live feeds). A live preview shows the widths that will be tested.
+  If you leave it empty, breakpoints are detected when you run. Only the breakpoints you choose are tested; no default widths are added. There are optional selectors to ignore (chat widgets, ads, live feeds). A live preview shows the widths that will be tested.
 
   URLs are forgiving: `www.site.com/page` becomes `https://www.site.com/page` (and `localhost:3000/x` becomes `http://…`), and each URL is checked as you leave the field. Recently used pages are suggested as you type.
 - **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. If you paste one URL, the chat asks for the other.
@@ -49,10 +49,10 @@ Then ask follow-up questions:
 | `show high issues` · `what's wrong on mobile?` · `typography issues at 1024` | Filtered issue list; click one to see it on the page |
 | `issue #3 at 375` | One issue with Original/Migrated close-ups and its fix |
 | `show all fixes` · `fixes for cards` | CSS merged per file, ready to copy |
-| `prompt for AEM Coder` | A prompt to paste into AEM Coder so it fixes the open issues (also *Copy prompt for AEM Coder* on the results card) |
+| `send to AEM Coder` · `prompt for AEM Coder` | Hand the open issues to AEM Coder (also *Send to AEM Coder* on the results card) · see or copy the prompt |
 | `breakpoints` | Original vs migrated breakpoints, with a re-run at the mismatched widths |
 | `re-run` | Same comparison again, with the same breakpoints |
-| `download the PDF report` · `download html` | The report file (see below) |
+| `download the PDF report` | The report file (see below) |
 | `history` | Earlier comparisons, which can be reopened in the chat |
 
 ## Visual parity toggle
@@ -70,21 +70,21 @@ Each issue in the list shows Original/Migrated close-ups, the values, a **comput
 
 ### Review (Chromatic / Percy style)
 
-Mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Each decision jumps to the next unreviewed issue, and a progress bar shows how much of the width is reviewed. *Hide approved* filters approved issues out. Decisions are saved with the report (`reports/<id>/review.json`), and the downloaded report uses them: approved differences are listed separately, and issues to fix are tagged.
+Mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Each decision jumps to the next unreviewed issue, and a progress bar shows how much of the width is reviewed. Decisions are saved with the report (`reports/<id>/review.json`), and the downloaded report uses them: approved differences are listed separately, and issues to fix are tagged.
 
 *Start review →* (or `N`) jumps to the next issue nobody has decided on yet.
 
 Keys: `←` `→` navigate · `F` needs fix · `A` approve · `N` next unreviewed · `1` `2` views · `Esc` clear.
 
-*Full page ↗* opens the same report full-screen, with the **Across breakpoints** matrix and **All fixes** tabs.
-
 ## Prompt for AEM Coder
 
-*Copy prompt for AEM Coder* on the results card copies a prompt you paste straight into the AEM Coder chat. It contains the two URLs, the original's breakpoints, how to work (block-scoped CSS, the original's media queries, checking each fix in the preview), and each open issue grouped by file with its Original and Migrated values and the affected widths. It also has the suggested CSS and the content issues to fix in the importer. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
+*Send to AEM Coder* on the results card hands the open issues to AEM Coder, with nothing to paste. It writes the prompt to `reports/aem-coder-fix.md`, and the project's `AGENTS.md` tells AEM Coder to follow that file. In the AEM Coder chat, just say **Fix the parity issues**. Press it again after a new comparison or review: the latest send wins. To see or copy the prompt yourself, type `prompt for AEM Coder` in the chat.
+
+The prompt contains the two URLs, the original's breakpoints, how to work (block-scoped CSS, the original's media queries, checking each fix in the preview), and each open issue grouped by file with its Original and Migrated values and the affected widths. It also has the suggested CSS and the content issues to fix in the importer. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
 
 ## Downloadable report
 
-**Download PDF report** (or the HTML version) produces a shareable report of every issue:
+**PDF report** produces a shareable report of every issue:
 
 - A cover with the parity score, issue counts, review progress, breakpoints and any breakpoint mismatch.
 - A matrix of issues × tested widths.

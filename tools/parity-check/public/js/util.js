@@ -13,13 +13,9 @@ export const CATEGORY_LABEL = {
   layout: 'Layout', typography: 'Typography', color: 'Color', spacing: 'Spacing', content: 'Content', image: 'Image', responsive: 'Responsive', component: 'Component', page: 'Page',
 };
 
-export function testWidths(bps, { base, edges, wide }, extra = []) {
-  const set = new Set(extra);
-  const sorted = [...bps].sort((a, b) => a - b);
-  if (base) set.add(sorted.length && sorted[0] <= 375 ? 320 : 375);
-  sorted.forEach((b) => { set.add(b); if (edges) set.add(b - 1); });
-  if (wide && (!sorted.length || sorted[sorted.length - 1] < 1366)) set.add(1440);
-  return [...set].filter((w) => w >= 280).sort((a, b) => a - b);
+/** Widths to test: exactly the chosen breakpoints, plus any widths asked for in the chat. */
+export function testWidths(bps, extra = []) {
+  return [...new Set([...bps, ...extra])].filter((w) => w >= 280).sort((a, b) => a - b);
 }
 
 export async function copy(text, btn, done = 'Copied') {
@@ -69,7 +65,7 @@ export async function loadReport(id) {
   return reportCache.get(id);
 }
 
-/** Downloads the PDF / HTML report, showing progress on the button. */
+/** Downloads the PDF report, showing progress on the button. */
 export async function downloadReport(id, format, btn) {
   const old = btn?.innerHTML;
   if (btn) {

@@ -64,18 +64,10 @@ export function suggestBreakpoints(clusters) {
 }
 
 /**
- * Viewport widths to test for a set of site breakpoints.
+ * Viewport widths to test: exactly the chosen breakpoints, nothing added.
  */
-export function testWidths(breakpoints, { base = true, edges = false, wide = true } = {}) {
-  const set = new Set();
-  const bps = [...breakpoints].sort((a, b) => a - b);
-  if (base) set.add(bps.length && bps[0] <= 375 ? 320 : 375);
-  bps.forEach((b) => {
-    set.add(b);
-    if (edges) set.add(b - 1);
-  });
-  if (wide && (!bps.length || bps[bps.length - 1] < 1366)) set.add(1440);
-  return [...set].filter((w) => w >= 280).sort((a, b) => a - b);
+export function testWidths(breakpoints) {
+  return [...new Set(breakpoints)].filter((w) => w >= 280).sort((a, b) => a - b);
 }
 
 /**

@@ -20,6 +20,9 @@ const PUBLIC = join(ROOT, 'public');
 const DEMO = join(ROOT, 'demo');
 const REPORTS = join(ROOT, 'reports');
 const SITES = join(ROOT, 'sites.json');
+// the latest prompt sent to AEM Coder (reports/ is git-ignored)
+const HANDOFF = join(REPORTS, 'aem-coder-fix.md');
+const HANDOFF_REL = 'tools/parity-check/reports/aem-coder-fix.md';
 const PORT = parseInt(process.env.PORT || '4300', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 
@@ -96,10 +99,10 @@ async function listReports() {
 }
 
 /**
- * Downloadable report with annotated screenshots. HTML is a single
- * self-contained file; PDF is printed by Chromium and cached next to the report.
+ * Downloadable PDF report with annotated screenshots, printed by Chromium
+ * and cached next to the report.
  */
-async function exportReport(res, id, format) {
+async function exportReport(res, id) {
   const dir = join(REPORTS, id);
   const jsonFile = join(dir, 'report.json');
   if (!existsSync(jsonFile)) { send(res, 404, { error: 'unknown report' }); return; }
@@ -114,11 +117,6 @@ async function exportReport(res, id, format) {
     });
     res.end(body);
   };
-  if (format === 'html') {
-    const { html, filename } = await buildExport(report, dir, { inline: true });
-    attach(`${filename}.html`, TYPES['.html'], html);
-    return;
-  }
   const pdfFile = join(dir, 'export.pdf');
   const newest = Math.max((await stat(jsonFile)).mtimeMs, existsSync(reviewFile) ? (await stat(reviewFile)).mtimeMs : 0);
   if (!existsSync(pdfFile) || (await stat(pdfFile)).mtimeMs < newest) {
@@ -145,6 +143,7 @@ function startJob(body) {
   const breakpoints = (body.breakpoints || []).map(Number).filter((n) => n > 0);
   let widths = (body.widths || []).map(Number).filter((n) => n >= 280 && n <= 3840);
   if (!widths.length) widths = testWidths(breakpoints);
+  if (!widths.length) throw new Error('Add at least one breakpoint to test.');
   widths = [...new Set(widths)].sort((a, b) => a - b);
   const job = {
     id: `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${randomUUID().slice(0, 6)}`,
@@ -215,7 +214,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/widths' && req.method === 'POST') {
       const body = await readBody(req);
-      send(res, 200, { widths: testWidths(body.breakpoints || [], body.options || {}) });
+      send(res, 200, { widths: testWidths(body.breakpoints || []) });
       return;
     }
     if (p === '/api/jobs' && req.method === 'POST') {
@@ -271,12 +270,18 @@ const server = http.createServer(async (req, res) => {
       const statuses = existsSync(reviewFile) ? JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {} : {};
       const prompt = buildFixPrompt(report, statuses, REPO_ROOT);
       await writeFile(join(dir, 'fix-prompt.md'), prompt);
+      if (req.method === 'POST') {
+        // "Send to AEM Coder": AEM Coder works in this repo, so it reads the prompt from a fixed file
+        await writeFile(HANDOFF, `<!-- parity report ${m[1]}, sent ${new Date().toISOString()} -->\n${prompt}`);
+        send(res, 200, { file: HANDOFF_REL, issues: prompt.match(/^- \[/gm)?.length || 0 });
+        return;
+      }
       send(res, 200, prompt, 'text/markdown; charset=utf-8');
       return;
     }
-    m = p.match(/^\/api\/reports\/([\w-]+)\/export\.(html|pdf)$/);
+    m = p.match(/^\/api\/reports\/([\w-]+)\/export\.(pdf)$/);
     if (m) {
-      await exportReport(res, m[1], m[2]);
+      await exportReport(res, m[1]);
       return;
     }
     if (p === '/api/reports') { send(res, 200, await listReports()); return; }
