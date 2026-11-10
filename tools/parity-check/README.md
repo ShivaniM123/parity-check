@@ -18,7 +18,7 @@ npm start          # http://127.0.0.1:4300
 When a comparison finishes, the chat shows a **Comparison complete** card with the original and migrated pages, the parity score out of 100 with High / Medium / Low counts, the tested widths and *Show visual parity*. On wide screens the **Comparison summary** panel on the right stays pinned while the chat scrolls:
 
 - **High / Medium / Low tiles**. Click one to list those issues in the chat.
-- **Top issues** with their widths: every kind of issue, most severe first, filling the panel (scroll for more). Click one to see it on the page. *View all* lists every issue.
+- **Top issues** with their widths: most severe first, as many as fit the panel (no scrolling). *View all* lists the rest. Click one to see it on the page. *View all* lists every issue.
 - **Quick actions**: *Download report* (PDF), *Copy for AEM Coder*, *Run new comparison*.
 
 Below 1000px the panel hides, and the card shows the top issues and actions instead. Past comparisons are under *History* in the top bar.

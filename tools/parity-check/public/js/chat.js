@@ -731,7 +731,10 @@ function setVisual(on, focus) {
   save();
   renderVisual(focus);
   renderSuggestions(); // eslint-disable-line no-use-before-define
-  if (!on) scrollDown(); // back in the chat: show the latest message
+  if (!on) {
+    scrollDown(); // back in the chat: show the latest message
+    requestAnimationFrame(fitIssues); // eslint-disable-line no-use-before-define
+  }
 }
 
 /* ------------------------------------------------------------ understanding */
@@ -924,7 +927,7 @@ async function renderResult(force = false) {
   try { report = await loadReport(state.reportId); } catch (e) { el.innerHTML = ''; return; }
   if (resultShown !== report.id) return; // another report was opened meanwhile
   const s = report.summary;
-  const top = topIssues(report, Infinity); // the list fills the panel and scrolls; quick actions stay at the bottom
+  const top = topIssues(report, Infinity); // trimmed to what fits by fitIssues()
   const tile = (sev, icon, label) => `<button type="button" class="sev-tile ${sev}" data-action="say" data-text="Show ${sev} issues">
     <span class="st-icon">${icon}</span><b>${s[sev]}</b><span>${label}</span></button>`;
   el.innerHTML = `<div class="rp-card">
@@ -942,7 +945,21 @@ async function renderResult(force = false) {
       <button type="button" class="qa" data-action="new-chat" title="Start a fresh chat with an empty comparison form">${ICON.rerun}<span>Run new comparison</span></button>
     </div></div>
   </div>`;
+  fitIssues();
 }
+
+/**
+ * Shows as many top issues as fit between the header and the quick actions,
+ * without a scrollbar. Whole rows only; "View all" lists the rest.
+ */
+function fitIssues() {
+  const list = root?.querySelector('.side-result .top-issues');
+  if (!list) return;
+  const rows = [...list.children];
+  rows.forEach((li) => { li.hidden = false; });
+  for (let i = rows.length - 1; i > 0 && list.scrollHeight > list.clientHeight + 1; i -= 1) rows[i].hidden = true;
+}
+window.addEventListener('resize', () => requestAnimationFrame(fitIssues));
 
 function renderSides() {
   if (resultShown !== state.reportId) renderResult();
