@@ -20,9 +20,6 @@ const PUBLIC = join(ROOT, 'public');
 const DEMO = join(ROOT, 'demo');
 const REPORTS = join(ROOT, 'reports');
 const SITES = join(ROOT, 'sites.json');
-// the latest prompt sent to AEM Coder (reports/ is git-ignored)
-const HANDOFF = join(REPORTS, 'aem-coder-fix.md');
-const HANDOFF_REL = 'tools/parity-check/reports/aem-coder-fix.md';
 const PORT = parseInt(process.env.PORT || '4300', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 
@@ -270,12 +267,6 @@ const server = http.createServer(async (req, res) => {
       const statuses = existsSync(reviewFile) ? JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {} : {};
       const prompt = buildFixPrompt(report, statuses, REPO_ROOT);
       await writeFile(join(dir, 'fix-prompt.md'), prompt);
-      if (req.method === 'POST') {
-        // "Send to AEM Coder": AEM Coder works in this repo, so it reads the prompt from a fixed file
-        await writeFile(HANDOFF, `<!-- parity report ${m[1]}, sent ${new Date().toISOString()} -->\n${prompt}`);
-        send(res, 200, { file: HANDOFF_REL, issues: prompt.match(/^- \[/gm)?.length || 0 });
-        return;
-      }
       send(res, 200, prompt, 'text/markdown; charset=utf-8');
       return;
     }

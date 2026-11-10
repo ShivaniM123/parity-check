@@ -212,7 +212,7 @@ function summaryHtml(report) {
     ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map(issueLine).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
     <div class="actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
-      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Hand the open issues to AEM Coder, which works in this project">Send to AEM Coder</button>
+      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
       <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
       <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
     </div></div>`;
@@ -260,28 +260,32 @@ const fixPrompt = async (id) => {
   return res.text();
 };
 
-// what to say in AEM Coder: it finds the issues in the file this tool just wrote
-const CODER_ASK = 'Fix the parity issues';
-
-/** Saves the prompt where AEM Coder reads it, so nothing has to be pasted. */
+/**
+ * Copies the whole prompt for AEM Coder. AEM Coder runs in its own workspace
+ * (not on this machine), so the clipboard is how the prompt gets there. The
+ * clipboard write starts inside the click, with the prompt still loading, so
+ * the browser keeps treating it as a user action.
+ */
 async function sendToCoder(reportId, btn) {
   const old = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'Sending…';
+  btn.textContent = 'Copying…';
+  const text = fixPrompt(reportId);
   try {
-    const res = await fetch(`/api/reports/${reportId}/fix-prompt`, { method: 'POST' });
-    const out = await res.json();
-    if (!res.ok) throw new Error(out.error || 'Could not send the issues');
-    navigator.clipboard?.writeText(CODER_ASK).catch(() => {});
-    btn.textContent = 'Sent ✓';
-    say(`<p><b>Sent to AEM Coder.</b> ${out.issues} open issue${out.issues === 1 ? '' : 's'} with the original and migrated values, the files to change and the suggested CSS. Approved differences are left out.</p>
-      <p>In the AEM Coder chat, just say <b>${CODER_ASK}</b>. It picks them up from <code>${esc(out.file)}</code>. Send again after a new comparison or review, and it gets the latest.</p>`);
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then((t) => new Blob([t], { type: 'text/plain' })) })]);
+    } else {
+      await copy(await text, btn);
+    }
+    const n = ((await text).match(/^- \[/gm) || []).length;
+    btn.textContent = 'Copied ✓';
+    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'} with the original and migrated values, the files to change and the suggested CSS. Approved differences are left out.</p>`);
   } catch (err) {
     btn.textContent = old;
-    say(`<p class="err">${esc(err.message)}</p>`);
+    say(`<p class="err">Couldn't copy: ${esc(err.message)}. Type <code>prompt for AEM Coder</code> to copy it from the preview.</p>`);
   } finally {
     btn.disabled = false;
-    setTimeout(() => { if (btn.textContent === 'Sent ✓') btn.textContent = old; }, 2500);
+    setTimeout(() => { if (btn.textContent === 'Copied ✓') btn.textContent = old; }, 2500);
   }
 }
 
@@ -311,7 +315,7 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
-  <li><code>send to AEM Coder</code>: hand the open issues to AEM Coder, then say <i>Fix the parity issues</i> there · <code>prompt for AEM Coder</code>: see or copy the prompt</li>
+  <li><code>prompt for AEM Coder</code>: copy a prompt with every open issue and paste it into AEM Coder</li>
   <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run</code> · <code>history</code></li></ul>
   <p>Switch on <b>Visual parity</b> (top right) to see both pages side by side with every issue marked.</p>`;
 
@@ -806,7 +810,7 @@ async function handle(text) {
   }
   if (/breakpoint/.test(t)) { add('bot', 'breakpoints', { reportId: report.id }); return; }
   if (/\bsend\b.*(coder|agent)/.test(t)) {
-    say(`<div class="actions"><button type="button" class="btn primary" data-action="send-coder" data-report="${esc(report.id)}">Send to AEM Coder</button></div>`);
+    say(`<div class="actions"><button type="button" class="btn primary" data-action="send-coder" data-report="${esc(report.id)}">Copy for AEM Coder</button></div>`);
     return;
   }
   if (/prompt|coder|agent/.test(t)) { add('bot', 'prompt', { reportId: report.id }); return; }

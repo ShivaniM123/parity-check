@@ -119,7 +119,7 @@ export function buildFixPrompt(report, statuses = {}, repoRoot = null) {
       out.push(`### ${file}`);
       items.forEach((g) => out.push(line(g, widths)));
     });
-    if (cssIssues.length > MAX_CSS) out.push(`\n…and ${cssIssues.length - MAX_CSS} more low-impact styling issues (see the full report).`);
+    if (cssIssues.length > MAX_CSS) out.push(`\n…and ${cssIssues.length - MAX_CSS} more low-impact styling issues (ask me for the full list).`);
   }
 
   if (fixes.length) {
@@ -138,10 +138,8 @@ export function buildFixPrompt(report, statuses = {}, repoRoot = null) {
     out.push('');
     out.push('## Content and other issues');
     other.slice(0, MAX_OTHER).forEach((g) => out.push(line(g, widths)));
-    if (other.length > MAX_OTHER) out.push(`…and ${other.length - MAX_OTHER} more (see the full report).`);
+    if (other.length > MAX_OTHER) out.push(`…and ${other.length - MAX_OTHER} more (ask me for the full list).`);
   }
 
-  out.push('');
-  out.push(`Full report with every issue: \`tools/parity-check/reports/${report.id}/report.json\`. Screenshots are in the same folder (\`<width>-original.png\`, \`<width>-migrated.png\`, \`<width>-diff.png\`).`);
   return `${out.join('\n')}\n`;
 }

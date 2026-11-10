@@ -49,7 +49,7 @@ Then ask follow-up questions:
 | `show high issues` · `what's wrong on mobile?` · `typography issues at 1024` | Filtered issue list; click one to see it on the page |
 | `issue #3 at 375` | One issue with Original/Migrated close-ups and its fix |
 | `show all fixes` · `fixes for cards` | CSS merged per file, ready to copy |
-| `send to AEM Coder` · `prompt for AEM Coder` | Hand the open issues to AEM Coder (also *Send to AEM Coder* on the results card) · see or copy the prompt |
+| `prompt for AEM Coder` | See and copy the prompt for AEM Coder (also *Copy for AEM Coder* on the results card) |
 | `breakpoints` | Original vs migrated breakpoints, with a re-run at the mismatched widths |
 | `re-run` | Same comparison again, with the same breakpoints |
 | `download the PDF report` | The report file (see below) |
@@ -78,7 +78,7 @@ Keys: `←` `→` navigate · `F` needs fix · `A` approve · `N` next unreviewe
 
 ## Prompt for AEM Coder
 
-*Send to AEM Coder* on the results card hands the open issues to AEM Coder, with nothing to paste. It writes the prompt to `reports/aem-coder-fix.md`, and the project's `AGENTS.md` tells AEM Coder to follow that file. In the AEM Coder chat, just say **Fix the parity issues**. Press it again after a new comparison or review: the latest send wins. To see or copy the prompt yourself, type `prompt for AEM Coder` in the chat.
+*Copy for AEM Coder* on the results card copies the whole prompt in one click. Paste it into the AEM Coder chat (⌘V) and send. Nothing needs editing. AEM Coder runs in its own workspace, not on the machine running this tool, so the prompt carries everything it needs and doesn't point to local report files. To see the prompt first, type `prompt for AEM Coder` in the chat.
 
 The prompt contains the two URLs, the original's breakpoints, how to work (block-scoped CSS, the original's media queries, checking each fix in the preview), and each open issue grouped by file with its Original and Migrated values and the affected widths. It also has the suggested CSS and the content issues to fix in the importer. Differences you approved in review are left out. A copy is saved next to the report as `fix-prompt.md`.
 
