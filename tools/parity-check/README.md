@@ -15,6 +15,8 @@ npm start          # http://127.0.0.1:4300
 
 ## Chat
 
+On wide screens the chat sits between two panels. **Recent** (left) lists your comparisons, with score, page, widths and high-issue count. Click one to reopen it. **Result** (right) keeps the current comparison pinned while the chat scrolls: score, pages, width chips, breakpoint mismatch, *Show visual parity*, *Copy for AEM Coder*, *PDF report*, *All fixes* and the top issues. Below 1280px the Recent panel hides, below 1000px the Result panel hides too, and both step aside in Visual parity mode.
+
 The app opens as a chat. Requests are understood by simple local rules, with no AI service involved; nothing leaves your machine except the page loads.
 
 Start a comparison either way:

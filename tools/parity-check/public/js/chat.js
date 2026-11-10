@@ -180,10 +180,10 @@ function setTitle(text) {
 }
 window.addEventListener('focus', () => { if (!document.title.startsWith('(')) setTitle(''); });
 
-function issueLine(i) {
+function issueLine(i, compact = false) {
   return `<button type="button" class="issue-line sev-${i.severity}" data-action="issue" data-id="${esc(i.id)}" data-report="${esc(i.reportId)}">
     <span class="pin-ref">${i.n}</span><span class="il-title">${esc(i.title)}</span>
-    <span class="cat-tag">${i.width}px · ${CATEGORY_LABEL[i.category] || i.category}</span></button>`;
+    <span class="cat-tag">${i.width}px${compact ? '' : ` · ${CATEGORY_LABEL[i.category] || i.category}`}</span></button>`;
 }
 
 function summaryHtml(report) {
@@ -209,7 +209,7 @@ function summaryHtml(report) {
     ${mm && (mm.missingInMigrated.length || mm.extraInMigrated.length) ? `<p class="note-warn"><b>Breakpoints don't match.</b>
       ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
       ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>` : ''}
-    ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map(issueLine).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
+    ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map((i) => issueLine(i)).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
     <div class="actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
       <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
@@ -239,7 +239,7 @@ function issuesHtml(report, f) {
     budget -= shown.length;
     if (!shown.length) return '';
     return `<h4 class="wgroup">${g.width}px <span class="muted">${g.issues.length}</span></h4>
-      <div class="issue-lines">${shown.map(issueLine).join('')}</div>
+      <div class="issue-lines">${shown.map((i) => issueLine(i)).join('')}</div>
       ${g.issues.length > shown.length ? `<button type="button" class="btn link" data-action="visual" data-report="${esc(report.id)}" data-width="${g.width}">+ ${g.issues.length - shown.length} more at ${g.width}px</button>` : ''}`;
   }).join('')}</div>`;
 }
@@ -578,8 +578,12 @@ function addFormBreakpoint(msg) {
 }
 
 /** Recently used pages, offered as suggestions in the form's URL fields. */
+let recentList = [];
+
 async function refreshRecent() {
   const list = await api('/api/reports').catch(() => []);
+  recentList = list;
+  renderRecent(); // eslint-disable-line no-use-before-define
   const fill = (id, key) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = [...new Set(list.map((r) => r[key]))].slice(0, 10).map((u) => `<option value="${esc(u)}"></option>`).join('');
@@ -855,9 +859,99 @@ async function send(text) {
   }
 }
 
+/* ------------------------------------------------------------ side panels */
+
+const ago = (iso) => {
+  const min = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 1440) return `${Math.round(min / 60)} h ago`;
+  return new Date(iso).toLocaleDateString();
+};
+const pageName = (u) => {
+  try {
+    const { pathname } = new URL(u);
+    return decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '/').replace(/\.html$/, '');
+  } catch (e) { return u; }
+};
+
+/** Left: recent comparisons, one click to reopen in the chat. */
+function renderRecent() {
+  const el = root?.querySelector('.side-recent');
+  if (!el) return;
+  el.innerHTML = `<div class="side-head"><h2>Recent</h2>
+      <button type="button" class="btn tiny" data-action="form">+ New</button></div>
+    <div class="recent-list">${recentList.length ? recentList.slice(0, 30).map((r) => `
+      <button type="button" class="recent-item ${r.id === state.reportId ? 'on' : ''}" data-action="open-report" data-report="${esc(r.id)}" title="${esc(r.original)}&#10;→ ${esc(r.migrated)}">
+        <span class="score-pill sm ${scoreClass(r.summary?.score ?? 0)}">${r.summary?.score ?? '–'}</span>
+        <span class="ri-main"><span class="ri-page">${esc(pageName(r.original))}</span>
+          <span class="ri-meta">${esc(hostOf(r.original))} · ${r.widths.join(', ')}px · ${ago(r.created)}</span></span>
+        ${r.summary?.high ? `<span class="tc high">${r.summary.high}</span>` : ''}
+      </button>`).join('') : '<p class="muted side-empty">No comparisons yet. Your runs show up here.</p>'}</div>`;
+}
+
+let resultShown = null;
+
+/** Right: the current result, pinned so it doesn't scroll away with the chat. */
+async function renderResult(force = false) {
+  const el = root?.querySelector('.side-result');
+  if (!el || (!force && resultShown === state.reportId)) return;
+  resultShown = state.reportId;
+  if (!state.reportId) {
+    el.innerHTML = `<div class="side-head"><h2>Result</h2></div>
+      <div class="side-empty"><p>Run a comparison and its result stays here: score, widths, top issues and the AEM Coder prompt.</p>
+      <p class="muted">Then ask in the chat, e.g. <code>show high issues</code>, <code>issue #2</code>, <code>fixes for cards</code>.</p></div>`;
+    return;
+  }
+  let report;
+  try { report = await loadReport(state.reportId); } catch (e) { el.innerHTML = ''; return; }
+  if (resultShown !== report.id) return; // another report was opened meanwhile
+  const s = report.summary;
+  const mm = report.breakpointMismatch;
+  const seen = new Set();
+  const top = report.results.flatMap((r) => r.issues.map((i) => ({ ...i, reportId: report.id })))
+    .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
+    .filter((i) => {
+      const k = `${i.category}|${i.property}|${i.title.replace(/\d+/g, '#')}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0, 8);
+  el.innerHTML = `<div class="side-head"><h2>Result</h2><span class="muted">${ago(report.created)}</span></div>
+    <div class="res-score">
+      <div class="score-ring ${scoreClass(s.score)}" style="--v:${s.score}"><b>${s.score}</b><span>parity</span></div>
+      <div class="rh-stats col"><span class="stat high"><b>${s.high}</b> high</span><span class="stat medium"><b>${s.medium}</b> medium</span><span class="stat low"><b>${s.low}</b> low</span></div>
+    </div>
+    <dl class="res-urls">
+      <dt class="lbl o">Original</dt><dd><a href="${esc(report.original)}" target="_blank" rel="noopener" title="${esc(report.original)}">${esc(hostOf(report.original))}<span>${esc(new URL(report.original).pathname)}</span></a></dd>
+      <dt class="lbl m">Migrated</dt><dd><a href="${esc(report.migrated)}" target="_blank" rel="noopener" title="${esc(report.migrated)}">${esc(hostOf(report.migrated))}<span>${esc(new URL(report.migrated).pathname)}</span></a></dd>
+    </dl>
+    <div class="width-chips">${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
+      <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
+    ${mm && (mm.missingInMigrated.length || mm.extraInMigrated.length) ? `<p class="note-warn sm"><b>Breakpoints don't match.</b>
+      ${mm.missingInMigrated.length ? `No media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
+      ${mm.extraInMigrated.length ? `Switches at ${mm.extraInMigrated.join(', ')}px.` : ''}</p>` : ''}
+    <div class="res-actions">
+      <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
+      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
+      <div class="res-row"><button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
+        <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button></div>
+    </div>
+    ${top.length ? `<h3 class="res-h">Top issues</h3><div class="issue-lines">${top.map((i) => issueLine(i, true)).join('')}</div>
+      <button type="button" class="btn link" data-action="say" data-text="Show all issues">All ${s.issues} issues →</button>` : '<p>No issues. 🎉</p>'}`;
+}
+
+function renderSides() {
+  if (resultShown !== state.reportId) {
+    renderRecent();
+    renderResult();
+  }
+}
+
 /* ------------------------------------------------------------ suggestions */
 
 function renderSuggestions() {
+  renderSides();
   const box = root?.querySelector('.suggestions');
   if (!box) return;
   let items;
@@ -949,6 +1043,12 @@ function onAction(e) {
     setVisual(true, { width, issueId: el.dataset.id });
   }
   if (action === 'close-visual') setVisual(false);
+  if (action === 'open-report' && el.dataset.report !== state.reportId) {
+    state.reportId = el.dataset.report;
+    state.visualWidth = null;
+    add('bot', 'summary', { reportId: state.reportId });
+    if (state.visual) renderVisual();
+  }
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
@@ -964,6 +1064,7 @@ export function mountChat(app, params) {
       <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
     <button type="button" class="nav-link" id="new-chat">New chat</button>`;
   app.innerHTML = `<div class="chat-app">
+    <aside class="side side-recent" aria-label="Recent comparisons"></aside>
     <section class="chat-col">
       <div class="messages" aria-live="polite"></div>
       <div class="composer">
@@ -976,6 +1077,7 @@ export function mountChat(app, params) {
         </form>
       </div>
     </section>
+    <aside class="side side-result" aria-label="Current result"></aside>
     <section class="visual-col"></section>
     <datalist id="recent-original"></datalist><datalist id="recent-migrated"></datalist>
   </div>`;
@@ -1077,6 +1179,7 @@ export function mountChat(app, params) {
       messages: [], reportId: null, visualWidth: null, pending: {},
     });
     save();
+    resultShown = undefined;
     mountChat(app, new URLSearchParams());
   });
 
@@ -1089,6 +1192,7 @@ export function mountChat(app, params) {
     Promise.all(state.messages.map(mountMessage)).then(scrollDown);
     state.messages.filter((m) => m.type === 'progress' && m.data.status === 'running').forEach(watchJob);
   }
+  resultShown = undefined; // fresh DOM: draw the panels again
   renderSuggestions();
   renderVisual();
   refreshRecent();
