@@ -4,8 +4,6 @@ import {
 
 /*
  * Visual parity viewer. UI patterns borrowed from free tools reviewers already know:
- * - PerfectPixel: overlay with opacity + "Difference" blend (identical pixels turn black)
- * - BackstopJS report: drag scrubber to wipe between reference and test
  * - Responsive Viewer / Polypane: every breakpoint side by side
  * - VisBug / DevTools: spacing measurement guides and a computed-style comparison
  * - Chromatic / Percy: review each change (needs fix / approve) with keyboard shortcuts
@@ -13,12 +11,9 @@ import {
 
 const ICONS = {
   side: '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="5.5" height="11" rx="1"/><rect x="9" y="2.5" width="5.5" height="11" rx="1"/></svg>',
-  overlay: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="9" height="9" rx="1"/><rect x="5.5" y="5.5" width="9" height="9" rx="1"/></svg>',
-  swipe: '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M8 1v14"/></svg>',
-  diff: '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M4 9l2-3 2 2 2-3 2 4"/></svg>',
   strip: '<svg viewBox="0 0 16 16"><rect x="1" y="4" width="3" height="8" rx=".5"/><rect x="5.5" y="3" width="4" height="10" rx=".5"/><rect x="11" y="2" width="4" height="12" rx=".5"/></svg>',
 };
-const MODES = [['side', 'Side by side'], ['overlay', 'Overlay'], ['swipe', 'Swipe'], ['diff', 'Pixel diff'], ['strip', 'Breakpoints']];
+const MODES = [['side', 'Side by side'], ['strip', 'Breakpoints']];
 const SEV_RANK = { high: 3, medium: 2, low: 1 };
 
 export function issueKey(i) {
@@ -165,16 +160,9 @@ export class Viewer {
 
   controlsHtml() {
     const p = Viewer.prefs;
-    if (this.mode === 'overlay') {
-      return `<label class="ctl">Opacity <input type="range" id="opacity" min="0" max="100" value="${p.opacity}" ${p.difference ? 'disabled' : ''}></label>
-        <label class="ctl chk" title="PerfectPixel-style difference blend: identical pixels turn black, differences light up (D)"><input type="checkbox" id="difference" ${p.difference ? 'checked' : ''}> Difference <kbd>D</kbd></label>
-        <button type="button" class="btn tiny" id="flip" title="Swap which page is on top">${p.flip ? 'Original' : 'Migrated'} on top ⇅</button>`;
-    }
-    if (this.mode === 'swipe') return '<span class="ctl hint">Drag across the page to wipe between Original and Migrated</span>';
     if (this.mode === 'strip') {
       return `<div class="seg mini" role="group" aria-label="Page">${['m', 'o'].map((s) => `<button type="button" data-strip="${s}" class="${p.stripSide === s ? 'on' : ''}">${s === 'o' ? 'Original' : 'Migrated'}</button>`).join('')}</div>`;
     }
-    if (this.mode === 'diff') return '<span class="ctl hint"><i class="lg red"></i>changed pixels · <i class="lg box"></i>hotspots</span>';
     return '';
   }
 
@@ -214,21 +202,7 @@ export class Viewer {
           <span class="strip-shot" style="--w:${res.width}"><img src="${this.src(side, res)}" alt="${side === 'o' ? 'Original' : 'Migrated'} at ${res.width}px" loading="lazy"><span class="strip-dots" data-width="${res.width}"></span></span>
         </button>`).join('')}</div>`;
     }
-    const p = Viewer.prefs;
-    const [under, over] = p.flip ? ['m', 'o'] : ['o', 'm'];
-    const title = {
-      overlay: p.difference ? 'Difference: black = identical, bright = different' : `${over === 'm' ? 'Migrated' : 'Original'} over ${under === 'm' ? 'migrated' : 'original'}`,
-      swipe: 'Original ◀ ▶ Migrated',
-      diff: 'Pixel diff',
-    }[this.mode];
-    return `<div class="pane single" data-side="m">
-        <div class="pane-title"><b>${title}</b><span>${r.width}px</span></div>
-        <div class="scroller"><div class="canvas ${this.mode === 'swipe' ? 'scrub' : ''}">
-          ${this.mode === 'diff' ? `<img src="${this.src('d')}" alt="Pixel diff">` : `<img src="${this.src(under)}" alt=""><img class="top ${this.mode === 'overlay' && p.difference ? 'blend' : ''}" src="${this.src(over)}" alt="">`}
-          ${this.mode === 'swipe' ? `<div class="swipe-line" style="left:${p.swipe}%"><span class="swipe-knob" aria-hidden="true">⇔</span></div>
-            <span class="swipe-tag o">Original</span><span class="swipe-tag m">Migrated</span>` : ''}
-          <div class="marks"></div></div></div>
-      </div>`;
+    return '';
   }
 
   bind() {
@@ -242,15 +216,6 @@ export class Viewer {
       zoom.value = this.zoom;
       zoom.addEventListener('change', () => { this.zoom = zoom.value; this.applyZoom(); });
     }
-    const top = this.root.querySelector('img.top');
-    if (this.mode === 'overlay' && top) {
-      const opacity = this.root.querySelector('#opacity');
-      top.style.opacity = p.difference ? 1 : p.opacity / 100;
-      opacity.addEventListener('input', () => { p.opacity = Number(opacity.value); top.style.opacity = p.opacity / 100; });
-      this.root.querySelector('#difference').addEventListener('change', (e) => { p.difference = e.target.checked; this.render(); });
-      this.root.querySelector('#flip').addEventListener('click', () => { p.flip = !p.flip; this.render(); });
-    }
-    if (this.mode === 'swipe' && top) this.bindScrubber(top);
     if (this.mode === 'strip') {
       this.root.querySelectorAll('[data-strip]').forEach((b) => b.addEventListener('click', () => { p.stripSide = b.dataset.strip; this.render(); }));
       this.root.querySelectorAll('.strip-col').forEach((c) => c.addEventListener('click', () => {
@@ -274,8 +239,8 @@ export class Viewer {
         requestAnimationFrame(() => { lock = false; });
       }));
     }
-    // clicking empty screenshot area clears the selection (not while scrubbing)
-    this.root.querySelectorAll('.canvas:not(.scrub)').forEach((c) => c.addEventListener('click', (e) => {
+    // clicking empty screenshot area clears the selection
+    this.root.querySelectorAll('.canvas').forEach((c) => c.addEventListener('click', (e) => {
       if (!e.target.closest('.pin, .focus-label')) this.onSelect(null);
     }));
     this.root.querySelectorAll('.canvas img').forEach((img) => img.addEventListener('load', () => this.drawMarks()));
@@ -288,31 +253,6 @@ export class Viewer {
     this.root.querySelectorAll('.canvas, .stage').forEach((c) => this.resizeObs.observe(c));
     this.applyZoom();
     this.updateNav();
-  }
-
-  /** BackstopJS-style scrubber: press anywhere on the page and drag. */
-  bindScrubber(top) {
-    const canvas = this.root.querySelector('.canvas');
-    const line = this.root.querySelector('.swipe-line');
-    const apply = (pct) => {
-      Viewer.prefs.swipe = Math.max(0, Math.min(100, pct));
-      top.style.clipPath = `inset(0 0 0 ${Viewer.prefs.swipe}%)`;
-      line.style.left = `${Viewer.prefs.swipe}%`;
-    };
-    apply(Viewer.prefs.swipe);
-    let dragging = false;
-    const at = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      apply(((e.clientX - rect.left) / rect.width) * 100);
-    };
-    canvas.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.pin')) return;
-      dragging = true;
-      canvas.setPointerCapture(e.pointerId);
-      at(e);
-    });
-    canvas.addEventListener('pointermove', (e) => { if (dragging) at(e); });
-    canvas.addEventListener('pointerup', () => { dragging = false; });
   }
 
   /** Breakpoint strip: one scale for every width, so relative widths stay true. */
@@ -403,18 +343,16 @@ export class Viewer {
       const box = (r, cls) => `<div class="${cls}" style="left:${r.x * scale}px;top:${r.y * scale}px;width:${Math.max(4, r.w * scale)}px;height:${Math.max(4, r.h * scale)}px"></div>`;
       let html = '';
       const sel = this.selected && this.issue(this.selected);
-      if (this.mode === 'diff' && !sel) html += this.result.regions.map((g) => box(g, 'hotspot')).join('');
       if (sel) {
         const rects = rectsFor(sel, side);
         if (rects.length) {
           const [first, ...rest] = rects;
           const expected = side === 'm' && sel.m?.expected;
-          html += box(first, `focus sev-${sel.severity} ${expected ? 'expected' : ''} ${this.mode === 'overlay' || this.mode === 'swipe' ? 'no-dim' : ''}`);
+          html += box(first, `focus sev-${sel.severity} ${expected ? 'expected' : ''}`);
           html += rest.map((r) => box(r, `also sev-${sel.severity}`)).join('');
           html += this.measureHtml(sel, side, scale);
           // the label shows this side's value, so both panes read like a before/after
-          let value = side === 'o' ? sel.ov : sel.mv;
-          if (this.mode !== 'side') value = sel.ov && sel.mv ? `${sel.ov} → ${sel.mv}` : sel.mv;
+          const value = side === 'o' ? sel.ov : sel.mv;
           const below = first.y * scale < 34;
           const labelX = Math.max(4, Math.min(first.x * scale, img.clientWidth - 370)); // keep it inside the pane (label max 360px)
           html += `<div class="focus-label sev-${sel.severity} ${below ? 'below' : ''}" style="left:${labelX}px;top:${(below ? first.y + first.h : first.y) * scale}px">
@@ -486,7 +424,7 @@ export class Viewer {
 
 // view preferences survive switching widths / reopening the panel
 Viewer.prefs = {
-  mode: 'side', opacity: 50, difference: false, flip: false, swipe: 50, stripSide: 'm',
+  mode: 'side', stripSide: 'm',
 };
 
 export function matrixHtml(report) {
@@ -538,7 +476,7 @@ export function mountWorkspace(container, report, result, { focusId, onWidthChan
         </div>
       </div>
       <div class="issue-list"></div>
-      <p class="kbd-hint muted"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>F</kbd> needs fix · <kbd>A</kbd> approve · <kbd>1</kbd>–<kbd>5</kbd> views · <kbd>Esc</kbd> clear</p>
+      <p class="kbd-hint muted"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>F</kbd> needs fix · <kbd>A</kbd> approve · <kbd>N</kbd> next unreviewed · <kbd>1</kbd> <kbd>2</kbd> views · <kbd>Esc</kbd> clear</p>
     </aside>
   </div>`;
   const list = container.querySelector('.issue-list');
@@ -552,8 +490,18 @@ export function mountWorkspace(container, report, result, { focusId, onWidthChan
     const ok = done - fix;
     container.querySelector('.review-progress').innerHTML = `
       <div class="rp-bar" title="${done} of ${total} reviewed"><span class="rp-fix" style="width:${(fix / Math.max(1, total)) * 100}%"></span><span class="rp-ok" style="width:${(ok / Math.max(1, total)) * 100}%"></span></div>
-      <div class="rp-text"><b>${done}</b> of ${total} reviewed${fix ? ` · <span class="t-fix">${fix} to fix</span>` : ''}${ok ? ` · <span class="t-ok">${ok} approved</span>` : ''}${done === total && total ? ' · <b>done</b> ✓' : ''}</div>`;
+      <div class="rp-text"><span><b>${done}</b> of ${total} reviewed${fix ? ` · <span class="t-fix">${fix} to fix</span>` : ''}${ok ? ` · <span class="t-ok">${ok} approved</span>` : ''}${done === total && total ? ' · <b>done</b> ✓' : ''}</span>
+        ${done < total ? `<button type="button" class="btn tiny rp-next" title="Jump to the next issue nobody has reviewed (N)">${done ? 'Next unreviewed' : 'Start review'} →</button>` : ''}</div>`;
+    container.querySelector('.rp-next')?.addEventListener('click', nextUnreviewed); // eslint-disable-line no-use-before-define
   };
+
+  // first issue (in list order) without a decision, starting after the selected one
+  function nextUnreviewed() {
+    const order = viewer.visibleOrder();
+    const from = order.indexOf(viewer.selected);
+    const next = [...order.slice(from + 1), ...order.slice(0, from + 1)].find((id) => !statuses[id]);
+    if (next) select(next, 'viewer'); // eslint-disable-line no-use-before-define
+  }
 
   const openBody = (el, iid) => {
     const bodyEl = el.querySelector('.issue-body');
@@ -637,9 +585,9 @@ export function mountWorkspace(container, report, result, { focusId, onWidthChan
     if (k === 'escape') select(null);
     if (k === 'f') setStatus(viewer.selected, 'fix');
     if (k === 'a') setStatus(viewer.selected, 'ok');
-    if (k === 'd' && viewer.mode === 'overlay') { Viewer.prefs.difference = !Viewer.prefs.difference; viewer.render(); viewer.select(viewer.selected); }
+    if (k === 'n') nextUnreviewed();
     const modes = MODES.map(([m]) => m).filter((m) => m !== 'strip' || onWidthChange);
-    if (/^[1-5]$/.test(k) && modes[Number(k) - 1]) viewer.setMode(modes[Number(k) - 1]);
+    if (/^[1-2]$/.test(k) && modes[Number(k) - 1]) viewer.setMode(modes[Number(k) - 1]);
   };
   document.addEventListener('keydown', keyHandler);
   if (focusId) setTimeout(() => select(focusId, 'viewer'), 300);

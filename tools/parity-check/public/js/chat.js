@@ -57,7 +57,7 @@ function setupHtml(msg) {
   const detected = d.clusters.filter((c) => c.count > 0);
   const max = Math.max(1, ...detected.map((c) => c.count));
   let intro = `I found <b>${d.mediaRules}</b> media rules. Click the bars to pick breakpoints (taller = used more), or type your own below.`;
-  if (d.saved) intro = `Using the breakpoints saved for <b>${esc(d.saved)}</b>.`;
+  if (d.saved) intro = `Using the breakpoints you used last time for <b>${esc(d.saved)}</b>. Edit them if needed.`;
   if (d.manual) intro = 'Using <b>your breakpoints</b>.';
   return `<div class="card-msg setup-msg">
     ${urlsHtml(d.original, d.migrated)}
@@ -76,7 +76,6 @@ function setupHtml(msg) {
       <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}</div></div>
     <div class="actions">
       <button type="button" class="btn primary" data-action="run" data-mid="${msg.id}">Run comparison</button>
-      <button type="button" class="btn ghost" data-action="save-site" data-mid="${msg.id}">Save breakpoints for ${esc(hostOf(d.original))}</button>
     </div></div>`;
 }
 
@@ -124,9 +123,11 @@ function formHtml(msg) {
   return `<form class="card-msg form-msg" data-mid="${id}" novalidate>
     <h3>New comparison</h3>
     <label class="f"><span class="lbl o">Original page</span>
-      <input type="url" name="original" required placeholder="https://www.example.com/products/widget" value="${esc(d.original)}"></label>
+      <input type="url" name="original" required list="recent-original" autocomplete="off" placeholder="https://www.example.com/products/widget" value="${esc(d.original)}">
+      <span class="f-err" aria-live="polite"></span></label>
     <label class="f"><span class="lbl m">Migrated page</span>
-      <input type="url" name="migrated" required placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}"></label>
+      <input type="url" name="migrated" required list="recent-migrated" autocomplete="off" placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}">
+      <span class="f-err" aria-live="polite"></span></label>
     ${bpBlockHtml(d, id)}
     <div class="toggles"><span class="muted">Also test:</span>
       ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" name="opt-${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
@@ -137,7 +138,6 @@ function formHtml(msg) {
     ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
     <div class="actions">
       <button type="submit" class="btn primary">Run comparison</button>
-      <label class="ctl chk"><input type="checkbox" name="save" ${d.save ? 'checked' : ''}> Save breakpoints for this site</label>
       <button type="button" class="btn link" data-action="form-demo" data-mid="${id}">Use the demo pages</button>
     </div>
   </form>`;
@@ -148,10 +148,40 @@ function progressHtml(msg) {
   if (d.status === 'error') return `<div class="card-msg"><p class="err">The comparison failed: ${esc(d.error)}</p></div>`;
   if (d.status === 'lost') return '<div class="card-msg"><p class="muted">This comparison was interrupted (the tool was restarted).</p></div>';
   const done = d.status === 'done';
+  const widths = d.widths || [];
+  // finished: one quiet line, the summary below has the per-width scores
+  if (done) {
+    const secs = d.ended && d.started ? Math.round((d.ended - d.started) / 1000) : null;
+    return `<p class="done-line">✓ Compared ${widths.length || ''} width${widths.length === 1 ? '' : 's'}${secs ? ` in ${secs < 60 ? `${secs}s` : `${Math.round(secs / 60)} min`}` : ''}.</p>`;
+  }
+  const finished = Object.keys(d.done || {}).length;
+  // after the first width, estimate the rest from the average time per width
+  let eta = '';
+  if (!done && finished && finished < widths.length) {
+    const left = Math.round((((Date.now() - d.started) / finished) * (widths.length - finished)) / 1000);
+    eta = left > 5 ? ` · about ${left < 60 ? `${left}s` : `${Math.round(left / 60)} min`} left` : ' · almost done';
+  }
+  const STAGE = { 'capturing original': 'original', 'capturing migrated': 'migrated', comparing: 'comparing' };
+  const steps = widths.map((w) => {
+    const r = d.done?.[w];
+    if (r) return `<li class="step ok" title="${r.issues} issues"><b>${w}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></li>`;
+    if (!done && d.current === w) return `<li class="step now">${spinner}<b>${w}px</b><span class="muted">${STAGE[d.stage] || ''}</span></li>`;
+    return `<li class="step"><b>${w}px</b></li>`;
+  }).join('');
   return `<div class="card-msg progress-msg">
+    <div class="progress-top"><b>${done ? 'Comparison finished' : 'Comparing…'}</b>
+      <span class="muted">${widths.length ? `${finished} of ${widths.length} widths${eta}` : ''}</span></div>
     <div class="progress"><span style="width:${done ? 100 : d.progress || 2}%"></span></div>
-    <p class="${done ? 'muted' : 'status busy'}">${done ? '' : spinner}${esc(done ? 'Comparison finished.' : d.last || 'Starting…')}</p></div>`;
+    ${steps ? `<ol class="steps">${steps}</ol>` : `<p class="status busy">${spinner}${esc(d.last || 'Starting…')}</p>`}
+  </div>`;
 }
+
+/* tab title shows progress, so the comparison can run in the background */
+const BASE_TITLE = 'Parity Check';
+function setTitle(text) {
+  document.title = text ? `${text} · ${BASE_TITLE}` : BASE_TITLE;
+}
+window.addEventListener('focus', () => { if (!document.title.startsWith('(')) setTitle(''); });
 
 function issueLine(i) {
   return `<button type="button" class="issue-line sev-${i.severity}" data-action="issue" data-id="${esc(i.id)}" data-report="${esc(i.reportId)}">
@@ -392,6 +422,14 @@ function watchJob(msg) {
     if (e.type === 'log') {
       d.progress = e.progress;
       d.last = e.message;
+      // "375px · capturing original" / "375px · score 68, 10 issues"
+      const stage = e.message.match(/^(\d+)px · (capturing original|capturing migrated|comparing)$/);
+      const result = e.message.match(/^(\d+)px · score (\d+), (\d+) issues/);
+      if (stage) Object.assign(d, { current: Number(stage[1]), stage: stage[2] });
+      if (result) {
+        d.done = { ...(d.done || {}), [result[1]]: { score: Number(result[2]), issues: Number(result[3]) } };
+      }
+      if (d.widths?.length) setTitle(`(${Object.keys(d.done || {}).length}/${d.widths.length}) Comparing…`);
       clearTimeout(timer);
       timer = setTimeout(() => update(msg), 80);
     }
@@ -400,11 +438,15 @@ function watchJob(msg) {
       clearTimeout(timer);
       d.status = e.status;
       d.error = e.error;
+      d.ended = Date.now();
       update(msg);
+      setTitle(e.status === 'done' ? '✓ Comparison done' : '✕ Comparison failed');
+      if (document.hasFocus()) setTimeout(() => setTitle(''), 4000);
       if (e.status === 'done') {
         state.reportId = d.jobId;
         state.visualWidth = null;
         add('bot', 'summary', { reportId: d.jobId });
+        refreshRecent();
         if (state.visual) renderVisual(); // eslint-disable-line no-use-before-define
       }
     }
@@ -433,7 +475,15 @@ async function run(setupMsg) {
       widths,
       options: { hideSelectors: [...DEFAULT_HIDE, ...(d.ignore || [])] },
     });
-    const msg = add('bot', 'progress', { jobId: id, progress: 2, status: 'running' });
+    // remember this site's breakpoints (and ignored elements) for next time: no "save" step
+    if (d.breakpoints.length) {
+      api('/api/sites', {
+        host: hostOf(d.original), breakpoints: d.breakpoints, widthOptions: d.opts, hideSelectors: [...DEFAULT_HIDE, ...(d.ignore || [])],
+      }).catch(() => {});
+    }
+    const msg = add('bot', 'progress', {
+      jobId: id, progress: 2, status: 'running', widths, done: {}, started: Date.now(),
+    });
     watchJob(msg);
   } catch (e) {
     d.status = 'ready';
@@ -457,6 +507,19 @@ async function rerun(extraWidths = []) {
   });
 }
 
+/** "www.site.com/x" -> "https://www.site.com/x"; "localhost:3000/x" -> "http://localhost:3000/x". */
+function normalizeUrl(raw) {
+  const u = String(raw || '').trim();
+  if (!u || /^https?:\/\//i.test(u)) return u;
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(u)) return `http://${u}`;
+  if (/^[\w-]+(\.[\w-]+)+(:\d+)?(\/|$)/.test(u)) return `https://${u}`;
+  return u;
+}
+
+function isPageUrl(u) {
+  try { return ['http:', 'https:'].includes(new URL(u).protocol); } catch (e) { return false; }
+}
+
 /** Adds the value of the form's "add breakpoint" field, with inline validation. */
 function addFormBreakpoint(msg) {
   const input = root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`);
@@ -474,7 +537,27 @@ function addFormBreakpoint(msg) {
   update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`)?.focus());
 }
 
+/** Recently used pages, offered as suggestions in the form's URL fields. */
+async function refreshRecent() {
+  const list = await api('/api/reports').catch(() => []);
+  const fill = (id, key) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = [...new Set(list.map((r) => r[key]))].slice(0, 10).map((u) => `<option value="${esc(u)}"></option>`).join('');
+  };
+  fill('recent-original', 'original');
+  fill('recent-migrated', 'migrated');
+}
+
 function addForm(prefill = {}) {
+  // one draft at a time: an open form moves down to the bottom with what's typed in it
+  const draft = state.messages.find((m) => m.type === 'form' && m.data.status === 'editing');
+  if (draft) {
+    state.messages = state.messages.filter((m) => m !== draft);
+    root.querySelector(`.msg[data-mid="${draft.id}"]`)?.remove();
+    const moved = add('bot', 'form', { ...draft.data, ...prefill, error: '' });
+    setTimeout(() => root.querySelector(`.form-msg[data-mid="${moved.id}"] input[name="original"]`)?.focus(), 100);
+    return moved;
+  }
   return add('bot', 'form', {
     original: '',
     migrated: '',
@@ -489,9 +572,15 @@ function addForm(prefill = {}) {
 
 async function submitForm(msg) {
   const d = msg.data;
-  const valid = (u) => { try { return ['http:', 'https:'].includes(new URL(u).protocol); } catch (e) { return false; } };
-  if (!valid(d.original) || !valid(d.migrated)) {
-    d.error = 'Enter both page URLs, starting with http:// or https://';
+  d.original = normalizeUrl(d.original);
+  d.migrated = normalizeUrl(d.migrated);
+  if (!isPageUrl(d.original) || !isPageUrl(d.migrated)) {
+    d.error = !d.original || !d.migrated ? 'Enter both page URLs.' : 'Both fields need a page URL, e.g. https://www.example.com/about';
+    update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] input[name="${isPageUrl(d.original) ? 'migrated' : 'original'}"]`)?.focus());
+    return;
+  }
+  if (d.original === d.migrated) {
+    d.error = 'The original and migrated URLs are the same. Enter two different pages.';
     update(msg);
     return;
   }
@@ -502,11 +591,6 @@ async function submitForm(msg) {
   state.messages = state.messages.filter((m) => m !== msg);
   root.querySelector(`.msg[data-mid="${msg.id}"]`)?.remove();
   add('user', 'text', { text: `Compare ${d.original} with ${d.migrated}${breakpoints.length ? `, breakpoints ${breakpoints.join(', ')}` : ''}` });
-  if (d.save && breakpoints.length) {
-    api('/api/sites', {
-      host: hostOf(d.original), breakpoints, widthOptions: d.opts, hideSelectors: DEFAULT_HIDE,
-    }).catch(() => {});
-  }
   await startComparison(d.original, d.migrated, {
     breakpoints,
     opts: d.opts,
@@ -527,8 +611,8 @@ async function renderVisual(focus = {}) {
   if (!state.visual) { panel.innerHTML = ''; return; }
   if (!state.reportId) {
     panel.innerHTML = `<div class="visual-empty card"><h2>Visual parity</h2>
-      <p class="muted">Run a comparison and both pages appear here side by side, with every issue marked.</p>
-      <button type="button" class="btn secondary" data-action="say" data-text="Try the demo">Try the demo</button></div>`;
+      <p class="muted">No comparison yet. Run one in the chat and both pages appear here side by side, with every issue marked.</p>
+      <button type="button" class="btn primary" data-action="close-visual">← Back to chat</button></div>`;
     return;
   }
   let report;
@@ -549,7 +633,7 @@ async function renderVisual(focus = {}) {
         <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
       <a class="btn tiny" href="#/report/${esc(report.id)}" title="Open the full report page">Full page ↗</a>
       <button type="button" class="btn tiny" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF</button>
-      <button type="button" class="icon-btn" data-action="close-visual" aria-label="Hide visual parity">×</button>
+      <button type="button" class="btn tiny back-chat" data-action="close-visual" title="Hide visual parity and return to the chat">← Back to chat</button>
     </div>
     <div class="visual-body"></div>`;
   panel.querySelectorAll('[data-vwidth]').forEach((b) => b.addEventListener('click', () => renderVisual({ width: Number(b.dataset.vwidth) })));
@@ -563,6 +647,7 @@ function setVisual(on, focus) {
   save();
   renderVisual(focus);
   renderSuggestions(); // eslint-disable-line no-use-before-define
+  if (!on) scrollDown(); // back in the chat: show the latest message
 }
 
 /* ------------------------------------------------------------ understanding */
@@ -742,7 +827,7 @@ function renderSuggestions() {
   if (running) items = ['How does it work?'];
   else if (pendingSetup()) items = ['Run comparison', 'Add breakpoint 1280', 'Add edge widths'];
   else if (state.reportId) {
-    items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'Download PDF report', state.visual ? 'Hide visual parity' : 'Show visual parity', 'New comparison'];
+    items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'New comparison']; // the summary card has the download and visual buttons
   } else items = ['New comparison', 'Try the demo', 'How does it work?', 'Show history'];
   box.innerHTML = items.map((s) => `<button type="button" class="sugg" data-action="say" data-text="${esc(s)}">${esc(s)}</button>`).join('');
 }
@@ -815,12 +900,6 @@ function onAction(e) {
       });
     }).catch((err) => { d.bpError = `Couldn't read the original: ${err.message}`; }).finally(() => update(msg));
   }
-  if (action === 'save-site' && msg) {
-    const d = msg.data;
-    api('/api/sites', {
-      host: hostOf(d.original), breakpoints: d.breakpoints, widthOptions: d.opts, extraWidths: d.extra, hideSelectors: DEFAULT_HIDE,
-    }).then(() => say(`<p>Saved. Next time I'll use these breakpoints for <b>${esc(hostOf(d.original))}</b>.</p>`));
-  }
   if (action === 'visual') {
     state.reportId = el.dataset.report || state.reportId;
     setVisual(true, { width: el.dataset.width ? Number(el.dataset.width) : undefined });
@@ -858,6 +937,7 @@ export function mountChat(app, params) {
       </div>
     </section>
     <section class="visual-col"></section>
+    <datalist id="recent-original"></datalist><datalist id="recent-migrated"></datalist>
   </div>`;
   root = app.querySelector('.chat-app');
   root.addEventListener('click', onAction);
@@ -903,17 +983,43 @@ export function mountChat(app, params) {
     card.querySelector('.f-widths').textContent = ws.length ? `${ws.join(', ')}px` : '…';
     save();
   });
+  // URL fields: fix up a missing https://, check as you leave the field, and recall
+  // what was used last time for this site (breakpoints, ignored elements, paired page)
   root.addEventListener('change', async (e) => {
     const card = e.target.closest('.form-msg');
-    if (!card || e.target.name !== 'original') return;
+    const { name } = e.target;
+    if (!card || !['original', 'migrated'].includes(name)) return;
     const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
-    const saved = (await api('/api/sites').catch(() => ({})))[hostOf(e.target.value)];
-    if (msg && saved?.breakpoints?.length && !numList(msg.data.breakpoints).length) {
-      Object.assign(msg.data, {
-        breakpoints: saved.breakpoints, note: `Loaded the breakpoints saved for ${hostOf(e.target.value)}.`, opts: { ...msg.data.opts, ...(saved.widthOptions || {}) },
+    if (!msg) return;
+    const url = normalizeUrl(e.target.value); // eslint-disable-line no-use-before-define
+    e.target.value = url;
+    msg.data[name] = url;
+    const errEl = e.target.parentElement.querySelector('.f-err');
+    const bad = url && !isPageUrl(url); // eslint-disable-line no-use-before-define
+    errEl.textContent = bad ? 'That doesn\'t look like a page URL, e.g. https://www.example.com/about' : '';
+    e.target.setAttribute('aria-invalid', String(!!bad));
+    save();
+    if (bad || name !== 'original' || !url) return;
+    const d = msg.data;
+    const [sites, reports] = await Promise.all([api('/api/sites').catch(() => ({})), api('/api/reports').catch(() => [])]);
+    const saved = sites[hostOf(url)];
+    let changed = false;
+    if (saved?.breakpoints?.length && !numList(d.breakpoints).length) {
+      const custom = (saved.hideSelectors || []).filter((s) => !DEFAULT_HIDE.includes(s));
+      Object.assign(d, {
+        breakpoints: saved.breakpoints,
+        note: `Using the breakpoints you used last time for ${hostOf(url)}. Edit them if needed.`,
+        opts: { ...d.opts, ...(saved.widthOptions || {}) },
+        ignore: d.ignore || custom.join('\n'),
       });
-      update(msg);
+      changed = true;
     }
+    const last = reports.find((r) => r.original === url);
+    if (last && !d.migrated) {
+      d.migrated = last.migrated; // the page it was compared with last time
+      changed = true;
+    }
+    if (changed) update(msg);
   });
   root.addEventListener('submit', (e) => {
     const card = e.target.closest('.form-msg');
@@ -955,6 +1061,7 @@ export function mountChat(app, params) {
   }
   renderSuggestions();
   renderVisual();
+  refreshRecent();
 
   const open = params.get('open');
   const again = params.get('rerun');

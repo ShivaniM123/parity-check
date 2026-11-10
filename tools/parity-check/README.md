@@ -25,7 +25,9 @@ Start a comparison either way:
   - *Common* presets (480, 600, 768, 900, 1024, 1200, 1280, 1440) add or remove a breakpoint in one click;
   - *Detect from original* adds the breakpoints found in the original's CSS to your list, and you remove any you don't need.
 
-  If you leave it empty, breakpoints are detected when you run. There are also toggles to also test mobile 375 / edges (breakpoint − 1px) / desktop 1440, optional selectors to ignore (chat widgets, ads, live feeds) and *Save breakpoints for this site*. A live preview shows the widths that will be tested.
+  If you leave it empty, breakpoints are detected when you run. There are also toggles to also test mobile 375 / edges (breakpoint − 1px) / desktop 1440, and optional selectors to ignore (chat widgets, ads, live feeds). A live preview shows the widths that will be tested.
+
+  URLs are forgiving: `www.site.com/page` becomes `https://www.site.com/page` (and `localhost:3000/x` becomes `http://…`), and each URL is checked as you leave the field. Recently used pages are suggested as you type.
 - **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. If you paste one URL, the chat asks for the other.
 
 The migrated page can also be `http://localhost:3000/{path}` while running `aem up`.
@@ -35,7 +37,9 @@ The migrated page can also be `http://localhost:3000/{path}` while running `aem 
 **On the setup card**, before running, breakpoints are editable chips: click × to remove one, type in *+ breakpoint* to add one, or click a detected bar. You can also type:
 `add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `add edge widths` · `run`.
 
-Breakpoints saved for a site (`sites.json`, per host) are reused automatically, so each site keeps its own breakpoints. Commit the file to share them.
+**It remembers each site.** Every run stores the breakpoints, *Also test* toggles and ignored elements per host in `sites.json`. The next time you enter an original URL from that site, they're filled in (with a note, so you can edit them), along with the migrated page it was last compared with. There's no "save" step. Commit `sites.json` to share breakpoints with the team.
+
+**While it runs**, each tested width shows as a step (pending → working → ✓ with its score), with an estimate of the time left. The browser tab title shows the progress (`(2/4) Comparing…`, then `✓ Comparison done`), so you can work elsewhere.
 
 Then ask follow-up questions:
 
@@ -52,15 +56,12 @@ Then ask follow-up questions:
 
 ## Visual parity toggle
 
-The **Visual parity** switch at the top of the chat opens a panel beside the conversation. Clicking any issue in the chat also switches it on. The viewer borrows patterns from free tools reviewers already know:
+The **Visual parity** switch in the top bar (next to *Chat* / *History*) swaps the chat for a full-screen comparison. Clicking any issue in the chat also switches it on. Switch it off, or click *← Back to chat*, to return to the conversation. The viewer borrows patterns from free tools reviewers already know:
 
 | View (key) | Modelled on | What it does |
 | --- | --- | --- |
 | Side by side (`1`) | — | Both pages with synced scroll and one numbered pin per element |
-| Overlay (`2`) | PerfectPixel extension | Migrated over original with an opacity slider. **Difference** (`D`) blends the two: identical pixels turn black and every mismatch lights up. *⇅* swaps which page is on top |
-| Swipe (`3`) | BackstopJS report scrubber | Press anywhere on the page and drag to wipe between Original and Migrated |
-| Pixel diff (`4`) | BackstopJS / pixelmatch | Changed pixels in red, with hotspot boxes |
-| Breakpoints (`5`) | Responsive Viewer / Polypane | Every tested width side by side at true relative size, with a dot per issue. Click one to open it |
+| Breakpoints (`2`) | Responsive Viewer / Polypane | Every tested width side by side at true relative size, with a dot per issue. Click one to open it |
 
 The selected issue is spotlighted on both pages: the rest of the page dims and both sides scroll to the element. Each label shows that side's value (e.g. `16px` on the original, `18px` on the migrated page). Spacing issues get **VisBug-style measurement guides** showing the gap on each side. Missing content gets a dashed box where it should be.
 
@@ -70,7 +71,9 @@ Each issue in the list shows Original/Migrated close-ups, the values, a **comput
 
 Mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Each decision jumps to the next unreviewed issue, and a progress bar shows how much of the width is reviewed. *Hide approved* filters approved issues out. Decisions are saved with the report (`reports/<id>/review.json`), and the downloaded report uses them: approved differences are listed separately, and issues to fix are tagged.
 
-Keys: `←` `→` navigate · `F` needs fix · `A` approve · `1`–`5` views · `D` difference · `Esc` clear.
+*Start review →* (or `N`) jumps to the next issue nobody has decided on yet.
+
+Keys: `←` `→` navigate · `F` needs fix · `A` approve · `N` next unreviewed · `1` `2` views · `Esc` clear.
 
 *Full page ↗* opens the same report full-screen, with the **Across breakpoints** matrix and **All fixes** tabs.
 

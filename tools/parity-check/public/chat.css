@@ -10,7 +10,8 @@ body.route-chat { overflow: hidden; }
   height: calc(100vh - var(--topbar));
 }
 
-.chat-app.with-visual { grid-template-columns: 440px minmax(0, 1fr); }
+/* visual parity on: the comparison takes the whole screen, the chat is hidden */
+.chat-app.with-visual .chat-col { display: none; }
 .chat-col { display: flex; flex-direction: column; min-height: 0; background: var(--bg); border-right: 1px solid var(--line); }
 .chat-app:not(.with-visual) .chat-col { border-right: 0; }
 .visual-col { min-width: 0; min-height: 0; display: none; flex-direction: column; background: var(--bg); padding: 12px 16px 16px; }
@@ -78,9 +79,18 @@ body.route-chat { overflow: hidden; }
 .setup-msg .chips { gap: 5px; }
 .add-inline input { width: 84px; padding: 2px 8px; border-radius: 999px; font-size: 12.5px; }
 
-/* progress */
-.progress-msg .progress { margin-bottom: 8px; }
+/* progress: one step per tested width */
+.progress-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; font-size: 13px; }
+.progress-msg .progress { margin-bottom: 10px; }
 .progress-msg p { font-size: 13px; color: var(--text-2); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.step { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; color: var(--muted); background: #fff; }
+.step b { font-weight: 600; }
+.step.now { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.step.now .spin { margin-right: 0; }
+.step.ok { color: var(--text); }
+.step.ok::before { content: '✓'; color: var(--good); font-weight: 700; }
+.msg.bot .msg-body > .done-line { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 /* summary */
 .sum-head { display: flex; gap: 14px; align-items: center; }
@@ -141,27 +151,21 @@ body.route-chat { overflow: hidden; }
 .icon-btn { font: inherit; font-size: 20px; line-height: 1; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-2); background: #fff; cursor: pointer; color: var(--text-2); }
 .icon-btn:hover { background: var(--bg); }
 .visual-body { flex: 1; min-height: 0; }
-.visual-body .workspace { grid-template-columns: minmax(0, 1fr) 340px; height: 100%; }
+.visual-body .workspace { grid-template-columns: minmax(0, 1fr) 420px; height: 100%; }
 .visual-body .stage { height: calc(100vh - var(--topbar) - 140px); min-height: 360px; }
 .visual-body .issues { height: calc(100vh - var(--topbar) - 95px); min-height: 405px; }
 .visual-empty { margin: auto; max-width: 420px; text-align: center; }
 .visual-empty h2 { margin-top: 0; }
 .page-card { max-width: 900px; margin: 0 auto; }
 
-@media (width < 1280px) {
-  .chat-app.with-visual { grid-template-columns: 380px minmax(0, 1fr); }
+@media (width < 1100px) {
+  .visual-body .workspace { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+
+@media (width < 860px) {
   .visual-body .workspace { grid-template-columns: minmax(0, 1fr); }
   .visual-body .issues { display: none; }
 }
-
-@media (width < 900px) {
-  .chat-app.with-visual { grid-template-columns: 1fr; grid-template-rows: 45% 55%; }
-  .chat-app.with-visual .chat-col { border-right: 0; border-bottom: 1px solid var(--line); }
-}
-
-/* narrow chat next to the visual panel: one scrollable row of suggestions */
-.chat-app.with-visual .suggestions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.chat-app.with-visual .sugg { flex: none; }
 
 /* ---------- comparison form card ---------- */
 .form-msg { display: flex; flex-direction: column; gap: 10px; }
@@ -190,6 +194,9 @@ body.route-chat { overflow: hidden; }
 .preset.on { border-style: solid; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .bp-block .f-note { margin: 0; }
 .form-msg .toggles { align-items: center; }
+.f-err { font-size: 12px; color: var(--high); font-weight: 400; }
+.f-err:empty { display: none; }
+.form-msg input[aria-invalid='true'] { border-color: var(--high); }
 .f-note { font-size: 12px; color: var(--muted); font-weight: 400; }
 .f-note:empty { display: none; }
 .f-more summary { cursor: pointer; font-size: 12.5px; font-weight: 500; }
