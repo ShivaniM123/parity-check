@@ -210,7 +210,7 @@ function summaryHtml(report) {
       ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
       ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>` : ''}
     ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map((i) => issueLine(i)).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
-    <div class="actions">
+    <div class="actions sum-actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
       <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
       <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
@@ -578,12 +578,8 @@ function addFormBreakpoint(msg) {
 }
 
 /** Recently used pages, offered as suggestions in the form's URL fields. */
-let recentList = [];
-
 async function refreshRecent() {
   const list = await api('/api/reports').catch(() => []);
-  recentList = list;
-  renderRecent(); // eslint-disable-line no-use-before-define
   const fill = (id, key) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = [...new Set(list.map((r) => r[key]))].slice(0, 10).map((u) => `<option value="${esc(u)}"></option>`).join('');
@@ -868,28 +864,6 @@ const ago = (iso) => {
   if (min < 1440) return `${Math.round(min / 60)} h ago`;
   return new Date(iso).toLocaleDateString();
 };
-const pageName = (u) => {
-  try {
-    const { pathname } = new URL(u);
-    return decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '/').replace(/\.html$/, '');
-  } catch (e) { return u; }
-};
-
-/** Left: recent comparisons, one click to reopen in the chat. */
-function renderRecent() {
-  const el = root?.querySelector('.side-recent');
-  if (!el) return;
-  el.innerHTML = `<div class="side-head"><h2>Recent</h2>
-      <button type="button" class="btn tiny" data-action="form">+ New</button></div>
-    <div class="recent-list">${recentList.length ? recentList.slice(0, 30).map((r) => `
-      <button type="button" class="recent-item ${r.id === state.reportId ? 'on' : ''}" data-action="open-report" data-report="${esc(r.id)}" title="${esc(r.original)}&#10;→ ${esc(r.migrated)}">
-        <span class="score-pill sm ${scoreClass(r.summary?.score ?? 0)}">${r.summary?.score ?? '–'}</span>
-        <span class="ri-main"><span class="ri-page">${esc(pageName(r.original))}</span>
-          <span class="ri-meta">${esc(hostOf(r.original))} · ${r.widths.join(', ')}px · ${ago(r.created)}</span></span>
-        ${r.summary?.high ? `<span class="tc high">${r.summary.high}</span>` : ''}
-      </button>`).join('') : '<p class="muted side-empty">No comparisons yet. Your runs show up here.</p>'}</div>`;
-}
-
 let resultShown = null;
 
 /** Right: the current result, pinned so it doesn't scroll away with the chat. */
@@ -942,10 +916,7 @@ async function renderResult(force = false) {
 }
 
 function renderSides() {
-  if (resultShown !== state.reportId) {
-    renderRecent();
-    renderResult();
-  }
+  if (resultShown !== state.reportId) renderResult();
 }
 
 /* ------------------------------------------------------------ suggestions */
@@ -1043,12 +1014,6 @@ function onAction(e) {
     setVisual(true, { width, issueId: el.dataset.id });
   }
   if (action === 'close-visual') setVisual(false);
-  if (action === 'open-report' && el.dataset.report !== state.reportId) {
-    state.reportId = el.dataset.report;
-    state.visualWidth = null;
-    add('bot', 'summary', { reportId: state.reportId });
-    if (state.visual) renderVisual();
-  }
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
@@ -1064,7 +1029,6 @@ export function mountChat(app, params) {
       <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
     <button type="button" class="nav-link" id="new-chat">New chat</button>`;
   app.innerHTML = `<div class="chat-app">
-    <aside class="side side-recent" aria-label="Recent comparisons"></aside>
     <section class="chat-col">
       <div class="messages" aria-live="polite"></div>
       <div class="composer">
