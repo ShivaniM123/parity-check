@@ -186,35 +186,77 @@ function issueLine(i, compact = false) {
     <span class="cat-tag">${i.width}px${compact ? '' : ` · ${CATEGORY_LABEL[i.category] || i.category}`}</span></button>`;
 }
 
+/* small inline icons (stroke = currentColor) */
+const ICON = {
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12.5l4 4 8-9"/></svg>',
+  ext: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15l-4-4M20 16H5l4 4"/></svg>',
+  bars: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V11M12 20V5M18 20v-6"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5L2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>',
+  bang: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>',
+  rerun: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>',
+};
+
+/** Most important issues first, one per kind of problem. */
+function topIssues(report, n) {
+  const seen = new Set();
+  return report.results.flatMap((r) => r.issues.map((i) => ({ ...i, reportId: report.id })))
+    .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
+    .filter((i) => {
+      const k = `${i.category}|${i.property}|${i.title.replace(/\d+/g, '#')}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, n);
+}
+
+function mismatchHtml(report, cls = '') {
+  const mm = report.breakpointMismatch;
+  if (!mm || !(mm.missingInMigrated.length || mm.extraInMigrated.length)) return '';
+  return `<p class="note-warn ${cls}"><b>Breakpoints don't match.</b>
+    ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
+    ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>`;
+}
+
+const pageBox = (cls, label, url) => `<a class="page-box ${cls}" href="${esc(url)}" target="_blank" rel="noopener" title="${esc(url)}">
+  <span class="pb-lbl">${label}</span><span class="pb-url"><span>${esc(url)}</span>${ICON.ext}</span></a>`;
+
+/** The result card in the chat: what was compared and how well it matches. Issues live in the right panel. */
 function summaryHtml(report) {
   const s = report.summary;
-  const mm = report.breakpointMismatch;
-  const top = report.results.flatMap((r) => r.issues.map((i) => ({ ...i, reportId: report.id })))
-    .filter((i) => i.severity === 'high');
-  const seen = new Set();
-  const unique = top.filter((i) => {
-    const k = `${i.category}|${i.property}|${i.title.replace(/\d+/g, '#')}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  }).slice(0, 5);
-  return `<div class="card-msg summary">
-    <div class="sum-head">
-      <div class="score-ring ${scoreClass(s.score)}" style="--v:${s.score}"><b>${s.score}</b><span>parity</span></div>
-      <div>${urlsHtml(report.original, report.migrated)}
-        <div class="rh-stats"><span class="stat high"><b>${s.high}</b> high</span><span class="stat medium"><b>${s.medium}</b> medium</span><span class="stat low"><b>${s.low}</b> low</span></div></div>
+  const top = topIssues(report, 5);
+  return `<p class="sum-intro">I've compared the pages. Here's the result:</p>
+  <div class="card-msg summary">
+    <div class="sum-top">
+      <div class="sum-main">
+        <div class="sum-title"><span class="ok-badge">${ICON.check}</span>
+          <div><h3>Comparison complete</h3><p>Here's how your pages match, and what needs attention.</p></div></div>
+        <div class="sum-pages">${pageBox('o', 'Original page', report.original)}<span class="swap" aria-hidden="true">${ICON.swap}</span>${pageBox('m', 'Migrated page', report.migrated)}</div>
+      </div>
+      <div class="sum-score">
+        <div class="score-ring big ${scoreClass(s.score)}" style="--v:${s.score}"><b>${s.score}</b><span>/100</span></div>
+        <div class="sev-legend"><h4>Parity score</h4>
+          <span class="high"><b>${s.high}</b> High</span><span class="medium"><b>${s.medium}</b> Medium</span><span class="low"><b>${s.low}</b> Low</span></div>
+      </div>
     </div>
-    <div class="width-chips">${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
-      <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
-    ${mm && (mm.missingInMigrated.length || mm.extraInMigrated.length) ? `<p class="note-warn"><b>Breakpoints don't match.</b>
-      ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
-      ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>` : ''}
-    ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map((i) => issueLine(i)).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
-    <div class="actions sum-actions">
+    <div class="sum-foot">
+      <div class="width-chips"><span class="muted">Widths</span>${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
+        <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
-      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
-      <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
-      <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
+    </div>
+    ${mismatchHtml(report)}
+    <div class="sum-narrow">
+      ${top.length ? `<h4>Top issues</h4><div class="issue-lines">${top.map((i) => issueLine(i)).join('')}</div>` : '<p>No issues. 🎉</p>'}
+      <div class="actions">
+        <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}">Copy for AEM Coder</button>
+        <button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
+        <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
+      </div>
     </div></div>`;
 }
 
@@ -267,7 +309,7 @@ const fixPrompt = async (id) => {
  * the browser keeps treating it as a user action.
  */
 async function sendToCoder(reportId, btn) {
-  const old = btn.textContent;
+  const old = btn.innerHTML; // tiles have an icon: put it back afterwards
   btn.disabled = true;
   btn.textContent = 'Copying…';
   const text = fixPrompt(reportId);
@@ -281,11 +323,11 @@ async function sendToCoder(reportId, btn) {
     btn.textContent = 'Copied ✓';
     say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'} with the original and migrated values, the files to change and the suggested CSS. Approved differences are left out.</p>`);
   } catch (err) {
-    btn.textContent = old;
+    btn.innerHTML = old;
     say(`<p class="err">Couldn't copy: ${esc(err.message)}. Type <code>prompt for AEM Coder</code> to copy it from the preview.</p>`);
   } finally {
     btn.disabled = false;
-    setTimeout(() => { if (btn.textContent === 'Copied ✓') btn.textContent = old; }, 2500);
+    setTimeout(() => { if (btn.textContent === 'Copied ✓') btn.innerHTML = old; }, 2500);
   }
 }
 
@@ -857,23 +899,16 @@ async function send(text) {
 
 /* ------------------------------------------------------------ side panels */
 
-const ago = (iso) => {
-  const min = Math.round((Date.now() - new Date(iso)) / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min} min ago`;
-  if (min < 1440) return `${Math.round(min / 60)} h ago`;
-  return new Date(iso).toLocaleDateString();
-};
 let resultShown = null;
 
-/** Right: the current result, pinned so it doesn't scroll away with the chat. */
+/** Right: the current result's summary, pinned so it doesn't scroll away with the chat. */
 async function renderResult(force = false) {
   const el = root?.querySelector('.side-result');
   if (!el || (!force && resultShown === state.reportId)) return;
   resultShown = state.reportId;
   if (!state.reportId) {
-    el.innerHTML = `<div class="side-head"><h2>Result</h2></div>
-      <div class="side-empty"><p>Run a comparison and its result stays here: score, widths, top issues and the AEM Coder prompt.</p>
+    el.innerHTML = `<div class="rp-card"><h2 class="rp-title">${ICON.bars}Comparison summary</h2>
+      <p class="muted">Run a comparison and its summary stays here: issue counts, top issues and quick actions.</p>
       <p class="muted">Then ask in the chat, e.g. <code>show high issues</code>, <code>issue #2</code>, <code>fixes for cards</code>.</p></div>`;
     return;
   }
@@ -881,38 +916,24 @@ async function renderResult(force = false) {
   try { report = await loadReport(state.reportId); } catch (e) { el.innerHTML = ''; return; }
   if (resultShown !== report.id) return; // another report was opened meanwhile
   const s = report.summary;
-  const mm = report.breakpointMismatch;
-  const seen = new Set();
-  const top = report.results.flatMap((r) => r.issues.map((i) => ({ ...i, reportId: report.id })))
-    .sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
-    .filter((i) => {
-      const k = `${i.category}|${i.property}|${i.title.replace(/\d+/g, '#')}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    }).slice(0, 8);
-  el.innerHTML = `<div class="side-head"><h2>Result</h2><span class="muted">${ago(report.created)}</span></div>
-    <div class="res-score">
-      <div class="score-ring ${scoreClass(s.score)}" style="--v:${s.score}"><b>${s.score}</b><span>parity</span></div>
-      <div class="rh-stats col"><span class="stat high"><b>${s.high}</b> high</span><span class="stat medium"><b>${s.medium}</b> medium</span><span class="stat low"><b>${s.low}</b> low</span></div>
+  const top = topIssues(report, 6);
+  const tile = (sev, icon, label) => `<button type="button" class="sev-tile ${sev}" data-action="say" data-text="Show ${sev} issues">
+    <span class="st-icon">${icon}</span><b>${s[sev]}</b><span>${label}</span></button>`;
+  el.innerHTML = `<div class="rp-card">
+    <h2 class="rp-title">${ICON.bars}Comparison summary</h2>
+    <div class="sev-tiles">${tile('high', ICON.warn, 'High')}${tile('medium', ICON.bang, 'Medium')}${tile('low', ICON.info, 'Low')}</div>
+
+    <div class="rp-row"><h3>Top issues</h3>${s.issues ? `<button type="button" class="btn link" data-action="say" data-text="Show all issues">View all ${s.issues} ${ICON.arrow}</button>` : ''}</div>
+    ${top.length ? `<ol class="top-issues">${top.map((i) => `<li><button type="button" class="ti sev-${i.severity}" data-action="issue" data-id="${esc(i.id)}" data-report="${esc(report.id)}">
+      <span class="ti-n">${i.n}</span><span class="ti-title">${esc(i.title)}</span><span class="ti-w">${i.width}px</span></button></li>`).join('')}</ol>` : '<p class="muted">No issues. 🎉</p>'}
+
+    <h3>Quick actions</h3>
+    <div class="quick">
+      <button type="button" class="qa" data-action="download" data-format="pdf" data-report="${esc(report.id)}">${ICON.download}<span>Download report</span></button>
+      <button type="button" class="qa" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">${ICON.copy}<span>Copy for AEM Coder</span></button>
+      <button type="button" class="qa" data-action="form">${ICON.rerun}<span>Run new comparison</span></button>
     </div>
-    <dl class="res-urls">
-      <dt class="lbl o">Original</dt><dd><a href="${esc(report.original)}" target="_blank" rel="noopener" title="${esc(report.original)}">${esc(hostOf(report.original))}<span>${esc(new URL(report.original).pathname)}</span></a></dd>
-      <dt class="lbl m">Migrated</dt><dd><a href="${esc(report.migrated)}" target="_blank" rel="noopener" title="${esc(report.migrated)}">${esc(hostOf(report.migrated))}<span>${esc(new URL(report.migrated).pathname)}</span></a></dd>
-    </dl>
-    <div class="width-chips">${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
-      <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
-    ${mm && (mm.missingInMigrated.length || mm.extraInMigrated.length) ? `<p class="note-warn sm"><b>Breakpoints don't match.</b>
-      ${mm.missingInMigrated.length ? `No media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
-      ${mm.extraInMigrated.length ? `Switches at ${mm.extraInMigrated.join(', ')}px.` : ''}</p>` : ''}
-    <div class="res-actions">
-      <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
-      <button type="button" class="btn secondary" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">Copy for AEM Coder</button>
-      <div class="res-row"><button type="button" class="btn ghost" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF report</button>
-        <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button></div>
-    </div>
-    ${top.length ? `<h3 class="res-h">Top issues</h3><div class="issue-lines">${top.map((i) => issueLine(i, true)).join('')}</div>
-      <button type="button" class="btn link" data-action="say" data-text="Show all issues">All ${s.issues} issues →</button>` : '<p>No issues. 🎉</p>'}`;
+  </div>`;
 }
 
 function renderSides() {

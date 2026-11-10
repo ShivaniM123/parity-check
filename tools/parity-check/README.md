@@ -15,7 +15,13 @@ npm start          # http://127.0.0.1:4300
 
 ## Chat
 
-On wide screens the **Result** panel on the right keeps the current comparison pinned while the chat scrolls: score, pages, width chips, breakpoint mismatch, *Show visual parity*, *Copy for AEM Coder*, *PDF report*, *All fixes* and the top issues. The result card in the chat doesn't repeat those buttons. Below 1000px the panel hides and the buttons move back onto the card. Past comparisons are under *History* in the top bar.
+When a comparison finishes, the chat shows a **Comparison complete** card with the original and migrated pages, the parity score out of 100 with High / Medium / Low counts, the tested widths and *Show visual parity*. On wide screens the **Comparison summary** panel on the right stays pinned while the chat scrolls:
+
+- **High / Medium / Low tiles**. Click one to list those issues in the chat.
+- **Top issues** with their widths. Click one to see it on the page. *View all* lists every issue.
+- **Quick actions**: *Download report* (PDF), *Copy for AEM Coder*, *Run new comparison*.
+
+Below 1000px the panel hides, and the card shows the top issues and actions instead. Past comparisons are under *History* in the top bar.
 
 The app opens as a chat. Requests are understood by simple local rules, with no AI service involved; nothing leaves your machine except the page loads.
 
