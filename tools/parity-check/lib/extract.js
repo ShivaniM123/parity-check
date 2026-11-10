@@ -109,6 +109,24 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     return SEMANTIC[el.tagName];
   };
 
+  // third-party embeds: rendered by a provider script into an iframe, with a plain
+  // fallback (e.g. blockquote.twitter-tweet) until then
+  const EMBEDS = [
+    ['Twitter', 'iframe[src*="platform.twitter.com"], iframe[id^="twitter-widget"]', 'blockquote.twitter-tweet:not(.twitter-tweet-rendered), .twitter-timeline:not(iframe)'],
+    ['Instagram', 'iframe[src*="instagram.com"]', 'blockquote.instagram-media:not(.instagram-media-rendered)'],
+    ['TikTok', 'iframe[src*="tiktok.com"]', 'blockquote.tiktok-embed'],
+    ['Facebook', 'iframe[src*="facebook.com"]', '.fb-post:not([fb-xfbml-state="rendered"]), .fb-video:not([fb-xfbml-state="rendered"])'],
+    ['YouTube', 'iframe[src*="youtube.com"], iframe[src*="youtube-nocookie.com"]', 'lite-youtube, .embed-youtube:not(:has(iframe))'],
+    ['Vimeo', 'iframe[src*="vimeo.com"]', '.embed-vimeo:not(:has(iframe))'],
+    ['Spotify', 'iframe[src*="spotify.com"]', ''],
+    ['Google Maps', 'iframe[src*="google.com/maps"], iframe[src*="maps.google"]', ''],
+    ['LinkedIn', 'iframe[src*="linkedin.com"]', ''],
+  ];
+  const embedOf = (el) => {
+    const hit = EMBEDS.find(([, rendered, fallback]) => el.closest(rendered) || (fallback && el.closest(fallback)));
+    return hit ? hit[0] : null;
+  };
+
   const regionOf = (el) => {
     if (el.closest('header, [role=banner]')) return 'header';
     if (el.closest('footer, [role=contentinfo]')) return 'footer';
@@ -320,6 +338,7 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
       selector: selectorOf(el),
       block: blockOf(el),
       region: regionOf(el),
+      embed: embedOf(el),
       fixed: (() => {
         let cur = el;
         while (cur && cur !== document.body) {
@@ -385,6 +404,25 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     index += 1;
   });
 
+  // ---- embeds, in document order: rendered (iframe) or still the fallback ----
+  const embeds = [];
+  EMBEDS.forEach(([provider, rendered, fallback]) => {
+    const nodes = [
+      ...[...document.querySelectorAll(rendered)].map((el) => ({ el, rendered: true })),
+      ...(fallback ? [...document.querySelectorAll(fallback)].map((el) => ({ el, rendered: false })) : []),
+    ];
+    nodes.forEach(({ el, rendered: isRendered }) => {
+      const r = rectOf(el);
+      if (!isVisible(el, r)) return;
+      // a fallback that already contains the rendered iframe counts once, as rendered
+      if (!isRendered && el.querySelector('iframe')) return;
+      embeds.push({
+        provider, rendered: isRendered, rect: r, selector: selectorOf(el), block: blockOf(el), region: regionOf(el),
+      });
+    });
+  });
+  embeds.sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+
   // ---- page level ----
   const offenders = [];
   if (doc.scrollWidth > vw + 1) {
@@ -449,6 +487,7 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     offenders: offenders.sort((a, b) => b.right - a.right).slice(0, 5),
     fonts: [...document.fonts].map((f) => ({ family: f.family.replace(/["']/g, ''), status: f.status, weight: f.weight })),
     isEds: !!document.querySelector('main .section, .block[data-block-name]'),
+    embeds,
     tokens,
     elements,
   };

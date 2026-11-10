@@ -92,7 +92,7 @@ h2 { font-size: 15px; margin: 20px 0 8px; }
 .btn.tiny { padding: 3px 9px; font-size: 12px; background: #fff; border-color: var(--line-2); color: var(--text-2); }
 .btn:hover { filter: brightness(0.97); }
 
-input[type='url'], input[type='number'], input[type='search'], textarea, select {
+input[type='url'], input[type='number'], input[type='search'], input[type='text'], textarea, select {
   font: inherit;
   border: 1px solid var(--line-2);
   border-radius: 8px;
@@ -324,7 +324,7 @@ label > input, label > textarea { margin-top: 4px; font-weight: 400; }
   position: absolute;
   transform: translateY(calc(-100% - 8px));
   z-index: 4;
-  max-width: min(360px, 90%);
+  max-width: min(360px, calc(100% - 8px));
   background: #fff;
   color: var(--text);
   font-size: 12px;

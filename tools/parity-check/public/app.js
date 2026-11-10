@@ -44,8 +44,8 @@ async function renderReport(id, params) {
       </div>
     </section>
     ${showMismatch ? `<div class="banner"><b>Breakpoints don't match.</b>
-      ${mismatch.missingInMigrated.length ? `Original changes layout at <b>${mismatch.missingInMigrated.join(', ')}px</b>, but migrated doesn't.` : ''}
-      ${mismatch.extraInMigrated.length ? `Migrated changes layout at <b>${mismatch.extraInMigrated.join(', ')}px</b>, but original doesn't.` : ''}
+      ${mismatch.missingInMigrated.length ? `The migrated CSS has no media query at <b>${mismatch.missingInMigrated.join(', ')}px</b>.` : ''}
+      ${mismatch.extraInMigrated.length ? `It switches layout at <b>${mismatch.extraInMigrated.join(', ')}px</b> instead.` : ''}
       <a class="btn tiny" href="#/?rerun=${esc(report.id)}">Re-run in chat</a></div>` : ''}
     <nav class="tabs">${tabs.map((t) => (t.r
     ? `<button type="button" data-tab="${t.key}"><b>${t.r.width}px</b><span class="score-pill sm ${scoreClass(t.r.score)}">${t.r.score}</span>${t.r.stats.high ? `<span class="tc high">${t.r.stats.high}</span>` : ''}</button>`

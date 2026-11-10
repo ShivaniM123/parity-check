@@ -1,5 +1,9 @@
 import { autoScroll, extractPage } from './extract.js';
 
+const EMBED_FALLBACKS = 'blockquote.twitter-tweet:not(.twitter-tweet-rendered), blockquote.instagram-media:not(.instagram-media-rendered), blockquote.tiktok-embed:not(:has(iframe))';
+
+const EMBED_SCRIPTS = 'script[src*="platform.twitter.com"], script[src*="instagram.com/embed"], script[src*="tiktok.com/embed"]';
+
 const FREEZE_CSS = `
 *, *::before, *::after { transition: none !important; caret-color: transparent !important; scroll-behavior: auto !important; }
 `;
@@ -34,6 +38,15 @@ export async function capturePage(browser, url, {
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.evaluate(autoScroll, { maxHeight }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    // social embeds render late (a provider script swaps the fallback for an iframe);
+    // only worth waiting for when the provider script is actually on the page
+    const pendingEmbeds = await page.evaluate(
+      ([sel, scripts]) => !!document.querySelector(sel) && !!document.querySelector(scripts),
+      [EMBED_FALLBACKS, EMBED_SCRIPTS],
+    ).catch(() => false);
+    if (pendingEmbeds) {
+      await page.waitForFunction((sel) => !document.querySelector(sel), EMBED_FALLBACKS, { timeout: 6000, polling: 250 }).catch(() => {});
+    }
     await page.addStyleTag({ content: FREEZE_CSS }).catch(() => {});
     await page.evaluate(() => document.fonts.ready.then(() => true)).catch(() => {});
     await page.waitForTimeout(waitMs);

@@ -54,22 +54,72 @@ function setupHtml(msg) {
     return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}
       <p class="muted">Breakpoints <b>${d.breakpoints.join(', ') || '–'}</b> · testing <b>${widths.join(', ')}px</b></p></div>`;
   }
-  const max = Math.max(1, ...d.clusters.map((c) => c.count));
+  const detected = d.clusters.filter((c) => c.count > 0);
+  const max = Math.max(1, ...detected.map((c) => c.count));
+  let intro = `I found <b>${d.mediaRules}</b> media rules. Click the bars to pick breakpoints (taller = used more), or type your own below.`;
+  if (d.saved) intro = `Using the breakpoints saved for <b>${esc(d.saved)}</b>.`;
+  if (d.manual) intro = 'Using <b>your breakpoints</b>.';
   return `<div class="card-msg setup-msg">
     ${urlsHtml(d.original, d.migrated)}
-    <p>${d.saved ? `Using the breakpoints saved for <b>${esc(d.saved)}</b>.` : `I found <b>${d.mediaRules}</b> media rules. These are the breakpoints the original uses (taller = used more):`}</p>
-    ${d.clusters.length ? `<div class="bars">${d.clusters.map((c) => `
+    <p>${intro}</p>
+    ${detected.length ? `<div class="bars">${detected.map((c) => `
       <button type="button" class="bar ${d.breakpoints.includes(c.px) ? 'on' : ''}" data-action="bp" data-mid="${msg.id}" data-px="${c.px}" title="${c.count} media rule(s) at ${c.px}px">
         <span class="bar-fill" style="height:${Math.max(8, (c.count / max) * 100)}%"></span><span class="bar-label">${c.px}</span></button>`).join('')}</div>` : ''}
+    <div class="field-row"><span class="field-label">Breakpoints</span>
+      <div class="chips">${d.breakpoints.map((b) => `<span class="chip">${b}px<button type="button" data-action="bp-remove" data-mid="${msg.id}" data-px="${b}" aria-label="Remove ${b}">×</button></span>`).join('') || '<span class="muted">none</span>'}
+        <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ breakpoint" data-mid="${msg.id}" data-list="breakpoints" aria-label="Add a breakpoint"></span>
+        ${detected.length ? '' : `<button type="button" class="btn link" data-action="detect" data-mid="${msg.id}">Detect from original</button>`}</div></div>
     <div class="toggles">
       ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" data-action="opt" data-mid="${msg.id}" data-k="${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
     </div>
-    <div class="chips">${widths.map((w) => `<span class="chip width">${w}px</span>`).join('')}
-      <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ width" data-mid="${msg.id}" aria-label="Add a width"></span></div>
+    <div class="field-row"><span class="field-label">Test widths</span>
+      <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}
+      <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ width" data-mid="${msg.id}" data-list="extra" aria-label="Add a width"></span></div></div>
     <div class="actions">
       <button type="button" class="btn primary" data-action="run" data-mid="${msg.id}">Run comparison</button>
       <button type="button" class="btn ghost" data-action="save-site" data-mid="${msg.id}">Save breakpoints for ${esc(hostOf(d.original))}</button>
     </div></div>`;
+}
+
+const numList = (s) => [...new Set(String(s || '').split(/[^\d]+/).map(Number).filter((n) => n >= 280 && n <= 3840))].sort((a, b) => a - b);
+
+function formWidths(d) {
+  return testWidths(numList(d.breakpoints), d.opts, numList(d.widths));
+}
+
+/** Structured "new comparison" form, as a chat card. */
+function formHtml(msg) {
+  const d = msg.data;
+  if (d.status === 'submitted') {
+    return `<div class="card-msg">${urlsHtml(d.original, d.migrated)}
+      <p class="muted">${numList(d.breakpoints).length ? `Breakpoints <b>${numList(d.breakpoints).join(', ')}</b>` : 'Breakpoints detected from the original'} · testing <b>${formWidths(d).join(', ') || '…'}px</b></p></div>`;
+  }
+  const { id } = msg;
+  return `<form class="card-msg form-msg" data-mid="${id}" novalidate>
+    <h3>New comparison</h3>
+    <label class="f"><span class="lbl o">Original page</span>
+      <input type="url" name="original" required placeholder="https://www.example.com/products/widget" value="${esc(d.original)}"></label>
+    <label class="f"><span class="lbl m">Migrated page</span>
+      <input type="url" name="migrated" required placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}"></label>
+    <label class="f"><span class="f-title">Breakpoints <span class="muted">px, comma-separated · leave empty and I'll detect them from the original</span></span>
+      <span class="bp-input"><input type="text" name="breakpoints" inputmode="numeric" placeholder="e.g. 768, 1024, 1280" value="${esc(d.breakpoints)}">
+      <button type="button" class="btn secondary" data-action="form-detect" data-mid="${id}">Detect</button></span>
+      <span class="f-note">${d.note || ''}</span></label>
+    <div class="toggles">
+      ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" name="opt-${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
+    </div>
+    <label class="f"><span class="f-title">Extra widths <span class="muted">optional</span></span>
+      <input type="text" name="widths" inputmode="numeric" placeholder="e.g. 1920" value="${esc(d.widths)}"></label>
+    <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
+      <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
+    <p class="f-preview">Will test <b class="f-widths">${formWidths(d).length ? `${formWidths(d).join(', ')}px` : '…'}</b></p>
+    ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
+    <div class="actions">
+      <button type="submit" class="btn primary">Run comparison</button>
+      <label class="ctl chk"><input type="checkbox" name="save" ${d.save ? 'checked' : ''}> Save breakpoints for this site</label>
+      <button type="button" class="btn link" data-action="form-demo" data-mid="${id}">Use the demo pages</button>
+    </div>
+  </form>`;
 }
 
 function progressHtml(msg) {
@@ -109,8 +159,8 @@ function summaryHtml(report) {
     <div class="width-chips">${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
       <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
     ${mm && (mm.missingInMigrated.length || mm.extraInMigrated.length) ? `<p class="note-warn"><b>Breakpoints don't match.</b>
-      ${mm.missingInMigrated.length ? `Original changes layout at ${mm.missingInMigrated.join(', ')}px, migrated doesn't.` : ''}
-      ${mm.extraInMigrated.length ? `Migrated changes layout at ${mm.extraInMigrated.join(', ')}px, original doesn't.` : ''}</p>` : ''}
+      ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
+      ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>` : ''}
     ${unique.length ? `<h4>Most important</h4><div class="issue-lines">${unique.map(issueLine).join('')}</div>` : '<p>No high-severity issues. 🎉</p>'}
     <div class="actions">
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
@@ -167,7 +217,11 @@ function breakpointsHtml(report) {
 }
 
 const HELP = `<p>I compare an original page with its migrated page at the <b>original site's own breakpoints</b>, mark every difference and suggest CSS fixes.</p>
-  <p><b>To start</b>, paste both URLs, e.g. <code>compare https://www.example.com/about with https://main--site--org.aem.page/about</code>. Add widths to run right away: <code>… at 375, 768, 1440</code>.</p>
+  <p><b>To start</b>, use the <b>Form</b> button (original URL, migrated URL, breakpoints), or type it:</p><ul>
+  <li><code>compare https://www.example.com/about with https://main--site--org.aem.page/about</code>: I detect the breakpoints from the original</li>
+  <li><code>… breakpoints 768, 1024, 1280</code>: use your breakpoints and run right away</li>
+  <li><code>… at 375, 1920</code>: extra test widths</li>
+  <li>Before running: <code>add breakpoint 1280</code> · <code>remove 640</code> · <code>breakpoints 600, 900</code> · <code>add edge widths</code></li></ul>
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
@@ -179,6 +233,7 @@ async function bodyFor(msg) {
   switch (msg.type) {
     case 'text': return msg.role === 'user' ? `<p>${esc(d.text)}</p>` : d.html;
     case 'setup': return setupHtml(msg);
+    case 'form': return formHtml(msg);
     case 'progress': return progressHtml(msg);
     case 'summary': return summaryHtml(await loadReport(d.reportId));
     case 'issues': return issuesHtml(await loadReport(d.reportId), d.filter);
@@ -247,16 +302,31 @@ function update(msg) {
 
 /* ------------------------------------------------------------ actions */
 
-async function startComparison(original, migrated, widths = []) {
+/**
+ * Sets up a comparison. With `breakpoints` the user's own values are used as-is;
+ * otherwise saved values for the site, otherwise they're detected from the original.
+ */
+async function startComparison(original, migrated, {
+  widths = [], breakpoints = [], opts, ignore = [], autoRun = false,
+} = {}) {
   state.pending = {};
   const msg = add('bot', 'setup', {
-    original, migrated, status: 'detecting', clusters: [], breakpoints: [], extra: widths, opts: { base: true, edges: false, wide: true },
+    original,
+    migrated,
+    status: 'detecting',
+    clusters: [],
+    breakpoints: [],
+    extra: widths,
+    ignore,
+    opts: { base: true, edges: false, wide: true, ...(opts || {}) },
   });
   const d = msg.data;
   try {
     const sites = await api('/api/sites').catch(() => ({}));
     const saved = sites[hostOf(original)];
-    if (saved?.breakpoints?.length) {
+    if (breakpoints.length) {
+      Object.assign(d, { breakpoints, manual: true, status: 'ready' });
+    } else if (saved?.breakpoints?.length) {
       Object.assign(d, {
         breakpoints: saved.breakpoints,
         clusters: saved.breakpoints.map((px) => ({ px, count: 1 })),
@@ -275,7 +345,22 @@ async function startComparison(original, migrated, widths = []) {
     Object.assign(d, { status: 'error', error: `I couldn't load the original page: ${e.message}` });
   }
   update(msg);
-  if (d.status === 'ready' && widths.length) run(msg); // eslint-disable-line no-use-before-define
+  if (d.status === 'ready' && (autoRun || widths.length || breakpoints.length)) run(msg); // eslint-disable-line no-use-before-define
+}
+
+/** Detects breakpoints for a setup card that started with the user's own. */
+async function detectInto(msg) {
+  const d = msg.data;
+  try {
+    const det = await api('/api/breakpoints', { url: d.original });
+    d.clusters = det.clusters;
+    d.mediaRules = det.mediaRules;
+    const extra = det.suggested.filter((b) => !d.breakpoints.includes(b));
+    update(msg);
+    say(`<p>The original's CSS switches layout at <b>${det.suggested.join(', ') || 'no common widths'}</b>px.${extra.length ? ` Click a bar to add ${extra.join(', ')}px.` : ' Your breakpoints already cover them. 👍'}</p>`);
+  } catch (e) {
+    say(`<p class="err">I couldn't read the original page: ${esc(e.message)}</p>`);
+  }
 }
 
 function watchJob(msg) {
@@ -326,7 +411,7 @@ async function run(setupMsg) {
       migrated: d.migrated,
       breakpoints: d.breakpoints,
       widths,
-      options: { hideSelectors: DEFAULT_HIDE },
+      options: { hideSelectors: [...DEFAULT_HIDE, ...(d.ignore || [])] },
     });
     const msg = add('bot', 'progress', { jobId: id, progress: 2, status: 'running' });
     watchJob(msg);
@@ -346,7 +431,57 @@ const pendingSetup = () => {
 async function rerun(extraWidths = []) {
   const report = await loadReport(state.reportId);
   const extra = [...new Set([...report.widths.filter((w) => !report.breakpoints.includes(w)), ...extraWidths])];
-  await startComparison(report.original, report.migrated, extra.length ? extra : report.widths);
+  const ignore = (report.options?.hideSelectors || []).filter((s) => !DEFAULT_HIDE.includes(s));
+  await startComparison(report.original, report.migrated, {
+    widths: extra, breakpoints: report.breakpoints, ignore, opts: { base: false, wide: false }, autoRun: true,
+  });
+}
+
+function addForm(prefill = {}) {
+  return add('bot', 'form', {
+    original: '',
+    migrated: '',
+    breakpoints: '',
+    widths: '',
+    ignore: '',
+    save: false,
+    opts: { base: true, edges: false, wide: true },
+    status: 'editing',
+    ...prefill,
+  });
+}
+
+async function submitForm(msg) {
+  const d = msg.data;
+  const valid = (u) => { try { return ['http:', 'https:'].includes(new URL(u).protocol); } catch (e) { return false; } };
+  if (!valid(d.original) || !valid(d.migrated)) {
+    d.error = 'Enter both page URLs, starting with http:// or https://';
+    update(msg);
+    return;
+  }
+  const breakpoints = numList(d.breakpoints);
+  const bad = String(d.breakpoints || '').split(/[,\s]+/).filter(Boolean).filter((x) => !/^\d{3,4}(px)?$/i.test(x) || !numList(x).length);
+  if (bad.length) {
+    d.error = `These breakpoints aren't valid widths (280–3840px): ${bad.join(', ')}`;
+    update(msg);
+    return;
+  }
+  // the submitted form becomes the user's message (the setup card below repeats the details)
+  state.messages = state.messages.filter((m) => m !== msg);
+  root.querySelector(`.msg[data-mid="${msg.id}"]`)?.remove();
+  add('user', 'text', { text: `Compare ${d.original} with ${d.migrated}${breakpoints.length ? `, breakpoints ${breakpoints.join(', ')}` : ''}` });
+  if (d.save && breakpoints.length) {
+    api('/api/sites', {
+      host: hostOf(d.original), breakpoints, widthOptions: d.opts, extraWidths: numList(d.widths), hideSelectors: DEFAULT_HIDE,
+    }).catch(() => {});
+  }
+  await startComparison(d.original, d.migrated, {
+    breakpoints,
+    widths: numList(d.widths),
+    opts: d.opts,
+    ignore: String(d.ignore || '').split('\n').map((s) => s.trim()).filter(Boolean),
+    autoRun: true,
+  });
 }
 
 /* ------------------------------------------------------------ visual panel */
@@ -413,11 +548,16 @@ const CATEGORY_WORDS = [
 
 function parse(text) {
   const urls = (text.match(URL_RE) || []).map((u) => (u.startsWith('http') ? u : `http://${u}`).replace(/[.,;:]+$/, ''));
-  const rest = text.replace(URL_RE, ' ');
+  let rest = text.replace(URL_RE, ' ');
+  // "breakpoints 768, 1024 and 1280px" -> breakpoints; any other numbers are test widths
+  const NUMS = '((?:\\d{3,4}\\s*(?:px)?\\s*(?:,|and|&|\\s)\\s*)*\\d{3,4})';
+  const bpMatch = rest.match(new RegExp(`\\b(?:breakpoints?|bps?)\\b\\s*(?:are|is|of|at|=|:)?\\s*${NUMS}`, 'i'));
+  const breakpoints = bpMatch ? numList(bpMatch[1]) : [];
+  if (bpMatch) rest = rest.replace(bpMatch[0], ' breakpoints ');
   const nums = [...rest.matchAll(/\b(\d{3,4})\s*(?:px)?\b/g)].map((m) => Number(m[1])).filter((n) => n >= 280 && n <= 3840);
   const issueNum = rest.match(/(?:#|\bissue\s*#?|\bnumber\s*)(\d{1,3})\b/i)?.[1];
   return {
-    urls, nums, issueNum: issueNum ? Number(issueNum) : null, t: rest.toLowerCase(),
+    urls, nums, breakpoints, issueNum: issueNum ? Number(issueNum) : null, t: rest.toLowerCase(),
   };
 }
 
@@ -431,18 +571,21 @@ function widthsFor(report, t, nums) {
 }
 
 async function handle(text) {
-  const { urls, nums, issueNum, t } = parse(text);
+  const {
+    urls, nums, breakpoints, issueNum, t,
+  } = parse(text);
+  const given = { widths: nums, breakpoints: breakpoints.length ? breakpoints : state.pending.breakpoints || [] };
 
-  if (urls.length >= 2) { await startComparison(urls[0], urls[1], nums); return; }
+  if (urls.length >= 2) { await startComparison(urls[0], urls[1], given); return; }
   if (urls.length === 1) {
     const [url] = urls;
-    if (state.pending.original) { await startComparison(state.pending.original, url, nums); return; }
-    if (state.pending.migrated) { await startComparison(url, state.pending.migrated, nums); return; }
+    if (state.pending.original) { await startComparison(state.pending.original, url, given); return; }
+    if (state.pending.migrated) { await startComparison(url, state.pending.migrated, given); return; }
     if (/migrat|new page|eds|aem\.(page|live)/.test(t) || /aem\.(page|live)|localhost:3000/.test(url)) {
-      state.pending = { migrated: url };
+      state.pending = { migrated: url, breakpoints };
       say('<p>Got the <b>migrated</b> page. What\'s the <b>original</b> page URL?</p>');
     } else {
-      state.pending = { original: url };
+      state.pending = { original: url, breakpoints };
       say('<p>Got the <b>original</b> page. What\'s the <b>migrated</b> page URL?</p>');
     }
     return;
@@ -453,10 +596,32 @@ async function handle(text) {
     return;
   }
   if (/^\s*(help|\?)\s*$|how (does|do|to)|what can|commands/.test(t)) { say(HELP); return; }
+  if (/\bform\b|new comparison|^\s*new\s*$|start over|compare (two|pages)/.test(t)) { addForm(); return; } // eslint-disable-line no-use-before-define
   if (/histor|previous|past|recent|earlier/.test(t)) { add('bot', 'history', { list: await api('/api/reports') }); return; }
 
   const setup = pendingSetup();
   if (setup) {
+    const sd = setup.data;
+    if (breakpoints.length && !/\b(add|also|include|plus|remove|drop|delete|without|exclude)\b/.test(t)) {
+      Object.assign(sd, { breakpoints, manual: true });
+      update(setup);
+      say(`<p>Breakpoints set to <b>${breakpoints.join(', ')}</b>px. Say <code>run</code> when ready.</p>`);
+      return;
+    }
+    const removeNums = /\b(remove|drop|delete|without|exclude)\b/.test(t) ? [...breakpoints, ...nums] : [];
+    if (removeNums.length) {
+      sd.breakpoints = sd.breakpoints.filter((b) => !removeNums.includes(b));
+      sd.extra = sd.extra.filter((w) => !removeNums.includes(w));
+      update(setup);
+      say(`<p>Removed ${removeNums.join(', ')}px.</p>`);
+      return;
+    }
+    if (/\bbreakpoints?\b/.test(t) && (breakpoints.length || nums.length)) {
+      sd.breakpoints = numList([...sd.breakpoints, ...breakpoints, ...nums].join(','));
+      update(setup);
+      say(`<p>Breakpoints are now <b>${sd.breakpoints.join(', ')}</b>px.</p>`);
+      return;
+    }
     if (/edge/.test(t)) { setup.data.opts.edges = true; update(setup); say('<p>Added the edge widths (each breakpoint − 1px).</p>'); return; }
     if (nums.length && /\b(add|also|include|test|plus)\b/.test(t)) {
       setup.data.extra = [...new Set([...setup.data.extra, ...nums])];
@@ -543,10 +708,10 @@ function renderSuggestions() {
   let items;
   const running = state.messages.some((m) => m.type === 'progress' && m.data.status === 'running');
   if (running) items = ['How does it work?'];
-  else if (pendingSetup()) items = ['Run comparison', 'Add edge widths', 'Also test 1920'];
+  else if (pendingSetup()) items = ['Run comparison', 'Add edge widths', 'Add breakpoint 1280', 'Also test 1920'];
   else if (state.reportId) {
-    items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'Download PDF report', state.visual ? 'Hide visual parity' : 'Show visual parity'];
-  } else items = ['Try the demo', 'How does it work?', 'Show history'];
+    items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'Download PDF report', state.visual ? 'Hide visual parity' : 'Show visual parity', 'New comparison'];
+  } else items = ['New comparison', 'Try the demo', 'How does it work?', 'Show history'];
   box.innerHTML = items.map((s) => `<button type="button" class="sugg" data-action="say" data-text="${esc(s)}">${esc(s)}</button>`).join('');
 }
 
@@ -565,6 +730,37 @@ function onAction(e) {
     update(msg);
   }
   if (action === 'run' && msg) run(msg);
+  if (action === 'bp-remove' && msg?.data.status === 'ready') {
+    msg.data.breakpoints = msg.data.breakpoints.filter((b) => b !== Number(el.dataset.px));
+    update(msg);
+  }
+  if (action === 'width-remove' && msg?.data.status === 'ready') {
+    msg.data.extra = msg.data.extra.filter((w) => w !== Number(el.dataset.px));
+    update(msg);
+  }
+  if (action === 'detect' && msg) detectInto(msg);
+  if (action === 'form') addForm(); // eslint-disable-line no-use-before-define
+  if (action === 'form-demo' && msg) {
+    Object.assign(msg.data, {
+      original: `${window.location.origin}/demo/original.html`, migrated: `${window.location.origin}/demo/migrated.html`, breakpoints: '640, 1024',
+    });
+    update(msg);
+  }
+  if (action === 'form-detect' && msg) {
+    const d = msg.data;
+    if (!/^https?:\/\//.test(d.original)) {
+      d.error = 'Enter the original page URL first.';
+      update(msg);
+      return;
+    }
+    el.disabled = true;
+    el.textContent = 'Detecting…';
+    api('/api/breakpoints', { url: d.original }).then((det) => {
+      Object.assign(d, {
+        breakpoints: det.suggested.join(', '), note: `Found in ${det.mediaRules} media rules on the original. Edit as you like.`, error: '',
+      });
+    }).catch((err) => { d.error = `Couldn't read the original: ${err.message}`; }).finally(() => update(msg));
+  }
   if (action === 'save-site' && msg) {
     const d = msg.data;
     api('/api/sites', {
@@ -601,6 +797,8 @@ export function mountChat(app, params) {
       <div class="composer">
         <div class="suggestions"></div>
         <form class="composer-form">
+          <button type="button" class="form-btn" data-action="form" title="Open the comparison form (URLs and breakpoints)" aria-label="Open the comparison form">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 5.5h6M5 8h6M5 10.5h3.5"/></svg>Form</button>
           <textarea rows="1" placeholder="Paste two URLs, or ask about the results…" aria-label="Message"></textarea>
           <button type="submit" class="btn primary" aria-label="Send">Send</button>
         </form>
@@ -624,8 +822,46 @@ export function mountChat(app, params) {
       e.preventDefault();
       const v = Number(el.value);
       const msg = state.messages.find((m) => m.id === Number(el.dataset.mid));
-      if (msg && v >= 280 && v <= 3840) { msg.data.extra = [...new Set([...msg.data.extra, v])]; update(msg); }
+      const list = el.dataset.list === 'breakpoints' ? 'breakpoints' : 'extra';
+      if (msg && v >= 280 && v <= 3840) {
+        msg.data[list] = [...new Set([...msg.data[list], v])].sort((a, b) => a - b);
+        if (list === 'breakpoints') msg.data.manual = true;
+        update(msg);
+      }
     }
+  });
+  // form card: keep its values in the message (so a reload restores them) and the preview live
+  root.addEventListener('input', (e) => {
+    const card = e.target.closest('.form-msg');
+    if (!card) return;
+    const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
+    if (!msg) return;
+    const { name, value, checked } = e.target;
+    if (name?.startsWith('opt-')) msg.data.opts[name.slice(4)] = checked;
+    else if (name === 'save') msg.data.save = checked;
+    else if (name) msg.data[name] = value;
+    const ws = formWidths(msg.data);
+    card.querySelector('.f-widths').textContent = ws.length ? `${ws.join(', ')}px` : '…';
+    save();
+  });
+  root.addEventListener('change', async (e) => {
+    const card = e.target.closest('.form-msg');
+    if (!card || e.target.name !== 'original') return;
+    const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
+    const saved = (await api('/api/sites').catch(() => ({})))[hostOf(e.target.value)];
+    if (msg && saved?.breakpoints?.length && !numList(msg.data.breakpoints).length) {
+      Object.assign(msg.data, {
+        breakpoints: saved.breakpoints.join(', '), note: `Loaded the breakpoints saved for ${hostOf(e.target.value)}.`, opts: { ...msg.data.opts, ...(saved.widthOptions || {}) },
+      });
+      update(msg);
+    }
+  });
+  root.addEventListener('submit', (e) => {
+    const card = e.target.closest('.form-msg');
+    if (!card) return;
+    e.preventDefault();
+    const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
+    if (msg) submitForm(msg); // eslint-disable-line no-use-before-define
   });
   const form = root.querySelector('.composer-form');
   const input = form.querySelector('textarea');
@@ -650,8 +886,9 @@ export function mountChat(app, params) {
   });
 
   if (!state.messages.length) {
-    say(`<p>Hi! I check the <b>visual parity</b> between an original page and its migrated page.</p>
-      <p>Paste both URLs to start, e.g. <code>compare https://www.example.com/about with https://main--site--org.aem.page/about</code>. Or type <code>demo</code>.</p>`);
+    say(`<p>Hi! I check the <b>visual parity</b> between an original page and its migrated page, at the breakpoints you choose.</p>
+      <p>Fill in the form below, or just type it, e.g. <code>compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024</code>.</p>`);
+    addForm();
   } else {
     // replay the conversation; reconnect to comparisons that were still running
     Promise.all(state.messages.map(mountMessage)).then(scrollDown);

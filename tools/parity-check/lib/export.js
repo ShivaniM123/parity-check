@@ -257,8 +257,8 @@ export async function buildExport(report, dir, { inline = true } = {}) {
     </div></header>`);
   if (mm && (mm.missingInMigrated.length || mm.extraInMigrated.length)) {
     parts.push(`<div class="banner"><b>Breakpoints don't match.</b>
-      ${mm.missingInMigrated.length ? `Original changes layout at <b>${mm.missingInMigrated.join(', ')}px</b>, migrated doesn't.` : ''}
-      ${mm.extraInMigrated.length ? `Migrated changes layout at <b>${mm.extraInMigrated.join(', ')}px</b>, original doesn't.` : ''}</div>`);
+      ${mm.missingInMigrated.length ? `The migrated CSS has no media query at <b>${mm.missingInMigrated.join(', ')}px</b>.` : ''}
+      ${mm.extraInMigrated.length ? `It switches layout at <b>${mm.extraInMigrated.join(', ')}px</b> instead.` : ''}</div>`);
   }
   parts.push(`<h2>Issues across breakpoints</h2><p class="muted">Each row is a problem; numbers refer to the issue at that width.</p>${matrix(report)}`);
 

@@ -17,10 +17,19 @@ npm start          # http://127.0.0.1:4300
 
 The app opens as a chat. Requests are understood by simple local rules, with no AI service involved; nothing leaves your machine except the page loads.
 
-1. **Paste both URLs**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about`. The migrated page can also be `http://localhost:3000/{path}` while running `aem up`. If you paste one URL, the chat asks for the other.
-2. **Breakpoints are read from the original.** The chat loads the original page and reads every `@media` rule from all its stylesheets, cross-origin ones included. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood. The breakpoints show as bars you can click to include or exclude. Next to them are the test widths: the breakpoints, mobile 375, optional edges (breakpoint − 1px) and desktop 1440. Type a width to add it.
-3. **Save breakpoints for the site.** They're stored per host in `sites.json` and reused automatically, so each site keeps its own breakpoints. Commit the file to share them.
-4. **Run comparison.** If the first message includes widths (`… at 375, 768, 1440`), the comparison starts right away.
+Start a comparison either way:
+
+- **Form** (shown in the welcome message, or the *Form* button next to *Send*): original URL, migrated URL and **breakpoints** (comma-separated). *Detect* fills the breakpoints in from the original's CSS, and you can edit them before running. There are also toggles for mobile 375 / edges (breakpoint − 1px) / desktop 1440, extra widths, optional selectors to ignore (chat widgets, ads, live feeds) and *Save breakpoints for this site*.
+- **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. Other numbers are extra test widths (`… at 375, 1920`). If you paste one URL, the chat asks for the other.
+
+The migrated page can also be `http://localhost:3000/{path}` while running `aem up`.
+
+**Breakpoint detection** reads every `@media` rule from all the original's stylesheets, cross-origin ones included. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood.
+
+**On the setup card**, before running, breakpoints are editable chips: click × to remove one, type in *+ breakpoint* to add one, or click a detected bar. You can also type:
+`add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `add edge widths` · `also test 1920` · `run`.
+
+Breakpoints saved for a site (`sites.json`, per host) are reused automatically, so each site keeps its own breakpoints. Commit the file to share them.
 
 Then ask follow-up questions:
 
@@ -86,6 +95,7 @@ A fix gets a media query only if the issue doesn't occur at every tested width, 
 | Image | Aspect ratio / crop, rendered size (ignored when the image just fills its container), broken images |
 | Responsive | Elements hidden at a width (or shown when the original hides them), horizontal scrolling |
 | Content | Missing sections (header/footer issues point to the nav/footer fragment), extra content, randomized content at the same spot, heading-level changes |
+| Embeds | Twitter/X, Instagram, TikTok, Facebook, YouTube, Vimeo, Spotify, Google Maps, LinkedIn: compared as embeds, never as text. Reported when one is missing, extra, or rendered on one page but still the plain fallback (e.g. the tweet text) on the other. Capture waits up to 6s for provider scripts to render them |
 | Page | Height difference, failed requests |
 
 Elements are matched by text first: unique exact matches, then duplicates resolved by position, then fuzzy matches. A vertical mapping learned from those anchors then matches images and controls. Translate transforms are removed before measuring, so scroll-reveal animations don't create false spacing issues. Shuffled content is left out of the spacing rules.

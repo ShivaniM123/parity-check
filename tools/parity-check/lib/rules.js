@@ -53,6 +53,7 @@ const niceRatio = (w, h) => {
   return hit ? `${hit[0]} / ${hit[1]}` : `${Math.round(w)} / ${Math.round(h)}`;
 };
 const pct = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(a));
+const countOf = (n) => `${n} element${n === 1 ? '' : 's'}`;
 const short = (t, n = 60) => (t && t.length > n ? `${t.slice(0, n - 1)}…` : t || '');
 const overlapX = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > Math.min(a.w, b.w) * 0.3;
 const median = (arr) => {
@@ -127,7 +128,8 @@ export function analyzeWidth({
     rect: el.rect, selector: el.selector, text: short(el.text), path: el.path, block: el.block, tag: el.tag, st: snap(el),
   });
 
-  const visiblePairs = match.matched.filter(({ o, m }) => o.visible && m.visible);
+  // third-party embed content is compared as a whole by the embed rule, not element by element
+  const visiblePairs = match.matched.filter(({ o, m }) => o.visible && m.visible && !o.embed && !m.embed);
   const textual = (e) => ['heading', 'text', 'action'].includes(e.kind);
 
   // ---------- typography / colour / component styles ----------
@@ -404,7 +406,7 @@ export function analyzeWidth({
   });
 
   // ---------- visibility at this breakpoint ----------
-  match.matched.forEach(({ o, m }) => {
+  match.matched.filter(({ o, m }) => !o.embed && !m.embed).forEach(({ o, m }) => {
     if (o.visible && !m.visible) {
       add({
         o: ref(o),
@@ -620,8 +622,8 @@ export function analyzeWidth({
     });
     return groups;
   };
-  const missingGroups = groupRegions(match.missing.filter((e) => e.text || e.kind === 'image'));
-  const extraGroups = groupRegions(match.extra.filter((e) => (e.text && e.text.length > 2) || e.kind === 'image'));
+  const missingGroups = groupRegions(match.missing.filter((e) => !e.embed).filter((e) => e.text || e.kind === 'image'));
+  const extraGroups = groupRegions(match.extra.filter((e) => !e.embed).filter((e) => (e.text && e.text.length > 2) || e.kind === 'image'));
   // same structure at the same spot but different text: dynamic/randomised content (feeds, search, carousels)
   const swapped = new Set();
   missingGroups.forEach((mg) => {
@@ -640,10 +642,10 @@ export function analyzeWidth({
       severity: 'low',
       title: `Content differs in the same spot (${mg.items.length} vs ${eg.items.length} elements)`,
       detail: `Original: “${short(mg.items[0].text, 40)}”. Migrated: “${short(eg.items[0].text, 40)}”. Same markup, different text: probably dynamic content (search results, feeds, random teasers).`,
-      ov: `${mg.items.length} elements`,
-      mv: `${eg.items.length} elements`,
+      ov: countOf(mg.items.length),
+      mv: countOf(eg.items.length),
       fix: {
-        file: null, selector: null, decl: [], note: 'If the content is meant to be static, check the authored content. Otherwise ignore it, or hide it under Advanced → Hide before capture.',
+        file: null, selector: null, decl: [], note: 'If the content is meant to be static, check the authored content. Otherwise approve it, or add its selector to "Ignore elements" in the comparison form.',
       },
     });
   });
@@ -662,7 +664,7 @@ export function analyzeWidth({
       severity: heading || g.items.length >= 3 || images ? 'high' : 'medium',
       title: heading ? `Missing section “${short(heading.text, 40)}”` : `Missing content (${g.items.length} element${g.items.length > 1 ? 's' : ''})`,
       detail: `${sample}${images ? `${sample ? ' and ' : ''}${images} image${images > 1 ? 's' : ''}` : ''} not found on the migrated page.`,
-      ov: `${g.items.length} elements`,
+      ov: countOf(g.items.length),
       mv: 'not found',
       fix: {
         file: null,
@@ -686,7 +688,7 @@ export function analyzeWidth({
       title: `Extra content on migrated page (${g.items.length} element${g.items.length > 1 ? 's' : ''})`,
       detail: `${g.items.filter((e) => e.text).slice(0, 3).map((e) => `“${short(e.text, 40)}”`).join(', ')} is not on the original.`,
       ov: 'not present',
-      mv: `${g.items.length} elements`,
+      mv: countOf(g.items.length),
       fix: {
         file: null, selector: null, decl: [], note: 'Remove it from the page content, or exclude it in the import cleanup transformer.',
       },
@@ -709,6 +711,83 @@ export function analyzeWidth({
         file: null, selector: null, decl: [], note: `Change the heading to h${o.level} in the content (or in the import parser).`,
       },
     });
+  });
+
+  // ---------- third-party embeds (Twitter, Instagram, YouTube, …) ----------
+  // Compared per provider in page order. Their inner text is not comparable: once
+  // the provider script runs it lives in a cross-origin iframe.
+  const providers = new Set([...(orig.embeds || []), ...(mig.embeds || [])].map((e) => e.provider));
+  providers.forEach((provider) => {
+    const oe = (orig.embeds || []).filter((e) => e.provider === provider);
+    const me = (mig.embeds || []).filter((e) => e.provider === provider);
+    // rendering an embed is the block's script's job, not its CSS
+    const fileOf = (e) => (e.block && isEds ? `blocks/${e.block}/${e.block}.js` : null);
+    const scriptNote = `The ${provider} embed script didn't render it. Check the embed block loads the provider script (EDS embed blocks load it when the block scrolls into view), and that a consent manager or CSP isn't blocking it.`;
+    for (let k = 0; k < Math.max(oe.length, me.length); k += 1) {
+      const o = oe[k];
+      const m = me[k];
+      if (o && m && o.rendered && !m.rendered) {
+        add({
+          o: { rect: o.rect, selector: o.selector },
+          m: { rect: m.rect, selector: m.selector, block: m.block },
+          category: 'content',
+          property: 'embed',
+          severity: 'medium',
+          title: `${provider} embed not rendered on the migrated page`,
+          detail: `The original shows the rendered ${provider} card. The migrated page still shows the plain fallback text.`,
+          ov: 'rendered',
+          mv: 'fallback text',
+          fix: {
+            file: fileOf(m), selector: null, decl: [], note: scriptNote,
+          },
+        });
+      } else if (o && m && !o.rendered && m.rendered) {
+        add({
+          o: { rect: o.rect, selector: o.selector },
+          m: { rect: m.rect, selector: m.selector, block: m.block },
+          category: 'content',
+          property: 'embed',
+          severity: 'low',
+          title: `${provider} embed rendered on migrated, plain fallback on the original`,
+          detail: `Both pages contain the ${provider} embed. Only the migrated page rendered it during capture.`,
+          ov: 'fallback text',
+          mv: 'rendered',
+          fix: {
+            file: null, selector: null, decl: [], note: 'Usually fine. The original\'s embed script was slow or blocked during capture.',
+          },
+        });
+      } else if (o && !m) {
+        add({
+          o: { rect: o.rect, selector: o.selector },
+          m: { rect: { x: o.rect.x, y: Math.round(match.ymap(o.rect.y)), w: o.rect.w, h: Math.min(o.rect.h, 120) }, selector: null, expected: true },
+          category: 'content',
+          property: 'embed',
+          severity: 'high',
+          title: `${provider} embed missing on the migrated page`,
+          detail: `The original has ${oe.length} ${provider} embed${oe.length > 1 ? 's' : ''}, the migrated page has ${me.length}.`,
+          ov: `${oe.length}`,
+          mv: `${me.length}`,
+          fix: {
+            file: null, selector: null, decl: [], note: `Author an embed block with the ${provider} URL, or check that the import parser keeps embeds.`,
+          },
+        });
+      } else if (!o && m) {
+        add({
+          o: { rect: null, selector: null },
+          m: { rect: m.rect, selector: m.selector, block: m.block },
+          category: 'content',
+          property: 'embed',
+          severity: 'low',
+          title: `Extra ${provider} embed on the migrated page`,
+          detail: `The migrated page has ${me.length} ${provider} embed${me.length > 1 ? 's' : ''}, the original has ${oe.length}.`,
+          ov: `${oe.length}`,
+          mv: `${me.length}`,
+          fix: {
+            file: null, selector: null, decl: [], note: 'Remove it from the page content if it isn\'t meant to be there.',
+          },
+        });
+      }
+    }
   });
 
   // ---------- page level ----------

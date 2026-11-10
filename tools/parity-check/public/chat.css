@@ -169,3 +169,31 @@ body.route-chat { overflow: hidden; }
 /* narrow chat next to the visual panel: one scrollable row of suggestions */
 .chat-app.with-visual .suggestions { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .chat-app.with-visual .sugg { flex: none; }
+
+/* ---------- comparison form card ---------- */
+.form-msg { display: flex; flex-direction: column; gap: 10px; }
+.form-msg h3 { margin: 0; font-size: 15px; }
+.form-msg .f { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+.form-msg .f .lbl { min-width: 0; }
+.form-msg .f input, .form-msg textarea { margin: 0; font-weight: 400; }
+.f-title { font-size: 12.5px; }
+.f-title .muted { font-weight: 400; font-size: 12px; }
+.bp-input { display: flex; gap: 8px; }
+.bp-input input { flex: 1; }
+.f-note { font-size: 12px; color: var(--muted); font-weight: 400; }
+.f-note:empty { display: none; }
+.f-more summary { cursor: pointer; font-size: 12.5px; font-weight: 500; }
+.f-more textarea { margin-top: 6px; }
+.f-preview { margin: 0; font-size: 12.5px; color: var(--text-2); }
+.form-msg .actions { margin-top: 2px; align-items: center; }
+.form-msg .err { margin: 0; }
+
+/* setup card rows */
+.field-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; align-items: center; margin: 8px 0; }
+.field-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.setup-msg .chip button { font-size: 14px; }
+
+/* composer: form button */
+.form-btn { font: inherit; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; flex: none; align-self: center; border: 1px solid var(--line-2); background: #fff; color: var(--text-2); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+.form-btn:hover { border-color: var(--accent); color: var(--accent); }
+.form-btn svg { width: 14px; height: 14px; fill: none; stroke: currentcolor; stroke-width: 1.4; }

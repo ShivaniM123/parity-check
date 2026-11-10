@@ -416,7 +416,7 @@ export class Viewer {
           let value = side === 'o' ? sel.ov : sel.mv;
           if (this.mode !== 'side') value = sel.ov && sel.mv ? `${sel.ov} → ${sel.mv}` : sel.mv;
           const below = first.y * scale < 34;
-          const labelX = Math.max(4, Math.min(first.x * scale, img.clientWidth - 280)); // keep it inside the pane
+          const labelX = Math.max(4, Math.min(first.x * scale, img.clientWidth - 370)); // keep it inside the pane (label max 360px)
           html += `<div class="focus-label sev-${sel.severity} ${below ? 'below' : ''}" style="left:${labelX}px;top:${(below ? first.y + first.h : first.y) * scale}px">
             <b>${sel.n}</b>${expected ? '<span>Missing here</span>' : `${value ? `<code class="${side}">${esc(value)}</code>` : ''}<span>${esc(shortTitle(sel.title))}</span>`}</div>`;
         }
