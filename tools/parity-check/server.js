@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 import { detectBreakpoints, testWidths } from './lib/breakpoints.js';
 import { runComparison } from './lib/run.js';
+import { buildExport, exportName } from './lib/export.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(ROOT, '..', '..');
@@ -91,6 +92,49 @@ async function listReports() {
     }
   }));
   return out.filter(Boolean).sort((a, b) => b.created.localeCompare(a.created));
+}
+
+/**
+ * Downloadable report with annotated screenshots. HTML is a single
+ * self-contained file; PDF is printed by Chromium and cached next to the report.
+ */
+async function exportReport(res, id, format) {
+  const dir = join(REPORTS, id);
+  const jsonFile = join(dir, 'report.json');
+  if (!existsSync(jsonFile)) { send(res, 404, { error: 'unknown report' }); return; }
+  const report = JSON.parse(await readFile(jsonFile, 'utf8'));
+  const reviewFile = join(dir, 'review.json');
+  if (existsSync(reviewFile)) report.review = JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {};
+  const attach = (name, type, body) => {
+    res.writeHead(200, {
+      'Content-Type': type,
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'Cache-Control': 'no-store',
+    });
+    res.end(body);
+  };
+  if (format === 'html') {
+    const { html, filename } = await buildExport(report, dir, { inline: true });
+    attach(`${filename}.html`, TYPES['.html'], html);
+    return;
+  }
+  const pdfFile = join(dir, 'export.pdf');
+  const newest = Math.max((await stat(jsonFile)).mtimeMs, existsSync(reviewFile) ? (await stat(reviewFile)).mtimeMs : 0);
+  if (!existsSync(pdfFile) || (await stat(pdfFile)).mtimeMs < newest) {
+    const { html } = await buildExport(report, dir, { inline: false });
+    await writeFile(join(dir, 'export.html'), html);
+    const browser = await chromium.launch({ args: ['--disable-dev-shm-usage'] });
+    try {
+      const page = await browser.newPage();
+      await page.goto(`http://${HOST}:${PORT}/reports/${id}/export.html`, { waitUntil: 'load', timeout: 120000 });
+      await page.pdf({
+        path: pdfFile, format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' },
+      });
+    } finally {
+      await browser.close();
+    }
+  }
+  attach(`${exportName(report)}.pdf`, 'application/pdf', await readFile(pdfFile));
 }
 
 function startJob(body) {
@@ -198,6 +242,28 @@ const server = http.createServer(async (req, res) => {
       }
       job.listeners.add(push);
       req.on('close', () => job.listeners.delete(push));
+      return;
+    }
+    m = p.match(/^\/api\/reports\/([\w-]+)\/review$/);
+    if (m) {
+      // review decisions per issue: 'fix' (needs fix) or 'ok' (difference approved)
+      const dir = join(REPORTS, m[1]);
+      if (!existsSync(join(dir, 'report.json'))) { send(res, 404, { error: 'unknown report' }); return; }
+      const file = join(dir, 'review.json');
+      if (req.method === 'PUT') {
+        const body = await readBody(req);
+        const statuses = Object.fromEntries(Object.entries(body.statuses || {})
+          .filter(([k, v]) => /^\d+-\d+$/.test(k) && ['fix', 'ok'].includes(v)));
+        await writeFile(file, JSON.stringify({ statuses, updated: new Date().toISOString() }));
+        send(res, 200, { ok: true });
+      } else {
+        send(res, 200, existsSync(file) ? JSON.parse(await readFile(file, 'utf8')) : { statuses: {} });
+      }
+      return;
+    }
+    m = p.match(/^\/api\/reports\/([\w-]+)\/export\.(html|pdf)$/);
+    if (m) {
+      await exportReport(res, m[1], m[2]);
       return;
     }
     if (p === '/api/reports') { send(res, 200, await listReports()); return; }

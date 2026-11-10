@@ -11,24 +11,68 @@ npx playwright install chromium   # once, if Chromium isn't installed yet
 npm start          # http://127.0.0.1:4300
 ```
 
-`PORT` and `HOST` environment variables override the defaults. Click **Try the demo pair** to see a full report in about 20 seconds.
+`PORT` and `HOST` environment variables override the defaults. Type `demo` in the chat to see a full comparison in about 20 seconds.
 
-## Workflow
+## Chat
 
-1. **Enter both URLs.** The original page, and the migrated page (`https://{branch}--{repo}--{owner}.aem.page/{path}` or `http://localhost:3000/{path}` while running `aem up`).
-2. **Detect from original.** The tool loads the original page and reads every `@media` rule from all its stylesheets, cross-origin ones included. It then shows the breakpoints it found, ranked by how many rules use them. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood.
-3. **Pick the test widths.** These are the breakpoints plus a mobile base (375), an optional "edge" width (breakpoint − 1px) and a wide desktop width (1440). You can add extra widths.
-4. **Save breakpoints for this site.** They're stored per host in `sites.json` and load automatically next time, so each site keeps its own breakpoints. Commit the file to share them with the team.
-5. **Run comparison.**
+The app opens as a chat. Requests are understood by simple local rules, with no AI service involved; nothing leaves your machine except the page loads.
 
-## The report
+1. **Paste both URLs**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about`. The migrated page can also be `http://localhost:3000/{path}` while running `aem up`. If you paste one URL, the chat asks for the other.
+2. **Breakpoints are read from the original.** The chat loads the original page and reads every `@media` rule from all its stylesheets, cross-origin ones included. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood. The breakpoints show as bars you can click to include or exclude. Next to them are the test widths: the breakpoints, mobile 375, optional edges (breakpoint − 1px) and desktop 1440. Type a width to add it.
+3. **Save breakpoints for the site.** They're stored per host in `sites.json` and reused automatically, so each site keeps its own breakpoints. Commit the file to share them.
+4. **Run comparison.** If the first message includes widths (`… at 375, 768, 1440`), the comparison starts right away.
 
-- **Parity score per width.** It combines pixel similarity, the share of elements matched, and issues weighted by severity.
-- **Breakpoint mismatch banner.** It lists breakpoints the original uses that the migrated CSS lacks, and the reverse. One click re-runs the comparison at those boundaries.
-- **Viewer** with four modes: *Side by side* (synced scroll), *Overlay* (opacity slider), *Swipe* and *Pixel diff* (with hotspots). Numbered markers show each issue on both screenshots. A dashed marker shows where missing content should be.
-- **Issue list.** Each issue has a severity, a category, the original and migrated values (with color swatches) and the migrated element's selector. It also has a **recommended fix**: the target file (`blocks/<block>/<block>.css` or `styles/styles.css`) and a ready-to-paste CSS rule.
-- **Across breakpoints.** A matrix of issues × widths shows which problems happen everywhere and which only happen in some ranges.
-- **All fixes.** Every fix merged per file. A rule gets a media query only if the issue doesn't occur at every tested width, and the query uses the **original site's breakpoints** (`@media (640px <= width < 1024px)`). Where a migrated design token holds the same value, the fix uses it (`var(--heading-font-size-xl)`).
+Then ask follow-up questions:
+
+| Ask | You get |
+| --- | --- |
+| `summary` · `score` | Parity score, per-width scores, breakpoint mismatch, top issues |
+| `show high issues` · `what's wrong on mobile?` · `typography issues at 1024` | Filtered issue list; click one to see it on the page |
+| `issue #3 at 375` | One issue with Original/Migrated close-ups and its fix |
+| `show all fixes` · `fixes for cards` | CSS merged per file, ready to copy |
+| `breakpoints` | Original vs migrated breakpoints, with a re-run at the mismatched widths |
+| `re-run and also test 1920` | New comparison with extra widths |
+| `download the PDF report` · `download html` | The report file (see below) |
+| `history` | Earlier comparisons, which can be reopened in the chat |
+
+## Visual parity toggle
+
+The **Visual parity** switch at the top of the chat opens a panel beside the conversation. Clicking any issue in the chat also switches it on. The viewer borrows patterns from free tools reviewers already know:
+
+| View (key) | Modelled on | What it does |
+| --- | --- | --- |
+| Side by side (`1`) | — | Both pages with synced scroll and one numbered pin per element |
+| Overlay (`2`) | PerfectPixel extension | Migrated over original with an opacity slider. **Difference** (`D`) blends the two: identical pixels turn black and every mismatch lights up. *⇅* swaps which page is on top |
+| Swipe (`3`) | BackstopJS report scrubber | Press anywhere on the page and drag to wipe between Original and Migrated |
+| Pixel diff (`4`) | BackstopJS / pixelmatch | Changed pixels in red, with hotspot boxes |
+| Breakpoints (`5`) | Responsive Viewer / Polypane | Every tested width side by side at true relative size, with a dot per issue. Click one to open it |
+
+The selected issue is spotlighted on both pages: the rest of the page dims and both sides scroll to the element. Each label shows that side's value (e.g. `16px` on the original, `18px` on the migrated page). Spacing issues get **VisBug-style measurement guides** showing the gap on each side. Missing content gets a dashed box where it should be.
+
+Each issue in the list shows Original/Migrated close-ups, the values, a **computed-style comparison** (DevTools-style, with differing properties highlighted; *Show all* lists every property), the element, and the recommended fix.
+
+### Review (Chromatic / Percy style)
+
+Mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Each decision jumps to the next unreviewed issue, and a progress bar shows how much of the width is reviewed. *Hide approved* filters approved issues out. Decisions are saved with the report (`reports/<id>/review.json`), and the downloaded report uses them: approved differences are listed separately, and issues to fix are tagged.
+
+Keys: `←` `→` navigate · `F` needs fix · `A` approve · `1`–`5` views · `D` difference · `Esc` clear.
+
+*Full page ↗* opens the same report full-screen, with the **Across breakpoints** matrix and **All fixes** tabs.
+
+## Downloadable report
+
+**Download PDF report** (or the HTML version) produces a shareable report of every issue:
+
+- A cover with the parity score, issue counts, review progress, breakpoints and any breakpoint mismatch.
+- A matrix of issues × tested widths.
+- For each width, an overview of both pages with every issue outlined and numbered. Each issue follows with its severity, an explanation, **Original and Migrated close-ups with the problem outlined** (drawn into the image), the computed styles that differ, the values, the element and the CSS fix. Approved differences are listed at the end of each width.
+- All recommended CSS fixes, merged per file.
+
+The HTML file is self-contained, with images embedded. The PDF is printed by Chromium and cached until the report changes.
+
+## How fixes are written
+
+A fix gets a media query only if the issue doesn't occur at every tested width, and the query uses the **original site's breakpoints** (`@media (640px <= width < 1024px)`). Where a migrated design token holds the same value, the fix uses it (`var(--heading-font-size-xl)`). Fixes target `blocks/<block>/<block>.css` or `styles/styles.css`.
 
 ## What it checks
 
@@ -49,6 +93,7 @@ Elements are matched by text first: unique exact matches, then duplicates resolv
 ## Notes
 
 - Fixes are recommendations computed from rendered styles. Review them before pasting, especially `margin`/`padding` changes, because margins collapse.
-- Cookie banners and chat widgets can be hidden before capture (Advanced → *Hide before capture*). Use the same option to exclude dynamic areas.
-- Long pages are captured up to *Max capture height* (12,000px by default).
+- Common cookie banners (OneTrust, Usercentrics and similar) are hidden before capture.
+- Long pages are captured up to 12,000px tall.
+- The conversation is kept in the browser (local storage). *New chat* clears it; reports stay available under History.
 - Reports are written to `reports/` (git-ignored). The whole folder is in `.hlxignore`, so none of it is served by the site.

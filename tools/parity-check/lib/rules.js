@@ -102,8 +102,29 @@ export function analyzeWidth({
     const name = type ? token(type, raw) : null;
     return name ? { prop, value: `var(${name})`, comment: value } : { prop, value };
   };
+  // compact computed-style snapshot, shown as an inspector table (original vs migrated)
+  const snap = (el) => {
+    const s = el.s || {};
+    return {
+      'font-family': s.fontFamily,
+      'font-size': s.fontSize ? pxv(s.fontSize) : undefined,
+      'font-weight': s.fontWeight ? String(s.fontWeight) : undefined,
+      'line-height': s.lineHeight ? pxv(s.lineHeight) : undefined,
+      'letter-spacing': s.letterSpacing !== undefined ? pxv(s.letterSpacing) : undefined,
+      'text-transform': s.textTransform,
+      'text-align': s.textAlign,
+      color: s.color ? toHex(s.color) : undefined,
+      background: s.bg && s.bg !== 'image' ? toHex(s.bg) : s.bg,
+      padding: s.pt !== undefined ? boxShorthand([s.pt, s.pr, s.pb, s.pl]) : undefined,
+      'margin-top': s.mt !== undefined ? pxv(s.mt) : undefined,
+      'margin-bottom': s.mb !== undefined ? pxv(s.mb) : undefined,
+      'border-radius': s.radius !== undefined ? pxv(s.radius) : undefined,
+      display: s.display,
+      size: `${el.rect.w}×${el.rect.h}`,
+    };
+  };
   const ref = (el) => ({
-    rect: el.rect, selector: el.selector, text: short(el.text), path: el.path, block: el.block, tag: el.tag,
+    rect: el.rect, selector: el.selector, text: short(el.text), path: el.path, block: el.block, tag: el.tag, st: snap(el),
   });
 
   const visiblePairs = match.matched.filter(({ o, m }) => o.visible && m.visible);
