@@ -73,8 +73,7 @@ function setupHtml(msg) {
       ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" data-action="opt" data-mid="${msg.id}" data-k="${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
     </div>
     <div class="field-row"><span class="field-label">Test widths</span>
-      <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}
-      <span class="add-inline"><input type="number" min="280" max="3840" placeholder="+ width" data-mid="${msg.id}" data-list="extra" aria-label="Add a width"></span></div></div>
+      <div class="chips">${widths.map((w) => `<span class="chip width">${w}px${d.extra.includes(w) ? `<button type="button" data-action="width-remove" data-mid="${msg.id}" data-px="${w}" aria-label="Remove ${w}">×</button>` : ''}</span>`).join('')}</div></div>
     <div class="actions">
       <button type="button" class="btn primary" data-action="run" data-mid="${msg.id}">Run comparison</button>
       <button type="button" class="btn ghost" data-action="save-site" data-mid="${msg.id}">Save breakpoints for ${esc(hostOf(d.original))}</button>
@@ -84,7 +83,34 @@ function setupHtml(msg) {
 const numList = (s) => [...new Set(String(s || '').split(/[^\d]+/).map(Number).filter((n) => n >= 280 && n <= 3840))].sort((a, b) => a - b);
 
 function formWidths(d) {
-  return testWidths(numList(d.breakpoints), d.opts, numList(d.widths));
+  return testWidths(numList(d.breakpoints), d.opts);
+}
+
+// one-click breakpoints most sites use
+const PRESETS = [480, 600, 768, 900, 1024, 1200, 1280, 1440];
+
+/** The form's breakpoint block: chips, an add field, presets and detection. */
+function bpBlockHtml(d, id) {
+  const bps = numList(d.breakpoints);
+  return `<fieldset class="bp-block">
+    <legend>Breakpoints</legend>
+    <div class="bp-chips" aria-live="polite">
+      ${bps.length ? bps.map((b) => `<span class="bp-chip">${b}px<button type="button" data-action="form-bp-remove" data-mid="${id}" data-px="${b}" aria-label="Remove ${b}px">×</button></span>`).join('')
+    : '<span class="bp-empty">No breakpoints yet. Add your own, pick common ones, or detect them from the original. Left empty, they\'re detected when you run.</span>'}
+      ${bps.length > 1 ? `<button type="button" class="btn link bp-clear" data-action="form-bp-clear" data-mid="${id}">Clear all</button>` : ''}
+    </div>
+    <div class="bp-add">
+      <input type="number" class="bp-add-input" min="280" max="3840" step="1" placeholder="e.g. 768" aria-label="Breakpoint in px" data-mid="${id}">
+      <span class="bp-unit">px</span>
+      <button type="button" class="btn secondary" data-action="form-bp-add" data-mid="${id}">+ Add breakpoint</button>
+      <button type="button" class="btn ghost" data-action="form-detect" data-mid="${id}">Detect from original</button>
+    </div>
+    ${d.bpError ? `<p class="err bp-err">${esc(d.bpError)}</p>` : ''}
+    <div class="bp-presets"><span class="muted">Common:</span>
+      ${PRESETS.map((p) => `<button type="button" class="preset ${bps.includes(p) ? 'on' : ''}" data-action="form-bp-preset" data-mid="${id}" data-px="${p}" aria-pressed="${bps.includes(p)}">${p}</button>`).join('')}
+    </div>
+    ${d.note ? `<p class="f-note">${esc(d.note)}</p>` : ''}
+  </fieldset>`;
 }
 
 /** Structured "new comparison" form, as a chat card. */
@@ -101,15 +127,10 @@ function formHtml(msg) {
       <input type="url" name="original" required placeholder="https://www.example.com/products/widget" value="${esc(d.original)}"></label>
     <label class="f"><span class="lbl m">Migrated page</span>
       <input type="url" name="migrated" required placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}"></label>
-    <label class="f"><span class="f-title">Breakpoints <span class="muted">px, comma-separated · leave empty and I'll detect them from the original</span></span>
-      <span class="bp-input"><input type="text" name="breakpoints" inputmode="numeric" placeholder="e.g. 768, 1024, 1280" value="${esc(d.breakpoints)}">
-      <button type="button" class="btn secondary" data-action="form-detect" data-mid="${id}">Detect</button></span>
-      <span class="f-note">${d.note || ''}</span></label>
-    <div class="toggles">
+    ${bpBlockHtml(d, id)}
+    <div class="toggles"><span class="muted">Also test:</span>
       ${[['base', 'Mobile 375'], ['edges', 'Edges (bp − 1)'], ['wide', 'Desktop 1440']].map(([k, l]) => `<label><input type="checkbox" name="opt-${k}" ${d.opts[k] ? 'checked' : ''}> ${l}</label>`).join('')}
     </div>
-    <label class="f"><span class="f-title">Extra widths <span class="muted">optional</span></span>
-      <input type="text" name="widths" inputmode="numeric" placeholder="e.g. 1920" value="${esc(d.widths)}"></label>
     <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
       <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
     <p class="f-preview">Will test <b class="f-widths">${formWidths(d).length ? `${formWidths(d).join(', ')}px` : '…'}</b></p>
@@ -220,12 +241,11 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <p><b>To start</b>, use the <b>Form</b> button (original URL, migrated URL, breakpoints), or type it:</p><ul>
   <li><code>compare https://www.example.com/about with https://main--site--org.aem.page/about</code>: I detect the breakpoints from the original</li>
   <li><code>… breakpoints 768, 1024, 1280</code>: use your breakpoints and run right away</li>
-  <li><code>… at 375, 1920</code>: extra test widths</li>
   <li>Before running: <code>add breakpoint 1280</code> · <code>remove 640</code> · <code>breakpoints 600, 900</code> · <code>add edge widths</code></li></ul>
   <p><b>Then ask:</b></p><ul>
   <li><code>show high issues</code> · <code>what's wrong on mobile?</code> · <code>typography issues at 1024</code></li>
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
-  <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run and also test 1920</code> · <code>history</code></li></ul>
+  <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run</code> · <code>history</code></li></ul>
   <p>Switch on <b>Visual parity</b> (top right) to see both pages side by side with every issue marked.</p>`;
 
 async function bodyFor(msg) {
@@ -296,8 +316,8 @@ const say = (html) => add('bot', 'text', { html });
 
 function update(msg) {
   save();
-  paint(msg);
   renderSuggestions();
+  return paint(msg);
 }
 
 /* ------------------------------------------------------------ actions */
@@ -437,12 +457,28 @@ async function rerun(extraWidths = []) {
   });
 }
 
+/** Adds the value of the form's "add breakpoint" field, with inline validation. */
+function addFormBreakpoint(msg) {
+  const input = root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`);
+  const raw = input?.value.trim();
+  const v = Number(raw);
+  const d = msg.data;
+  const bps = numList(d.breakpoints);
+  if (!raw) d.bpError = 'Type a width in px, e.g. 768.';
+  else if (!Number.isInteger(v) || v < 280 || v > 3840) d.bpError = `${raw} isn't a valid breakpoint. Use a whole number from 280 to 3840.`;
+  else if (bps.includes(v)) d.bpError = `${v}px is already in the list.`;
+  else {
+    d.breakpoints = numList([...bps, v].join(','));
+    d.bpError = '';
+  }
+  update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`)?.focus());
+}
+
 function addForm(prefill = {}) {
   return add('bot', 'form', {
     original: '',
     migrated: '',
-    breakpoints: '',
-    widths: '',
+    breakpoints: [],
     ignore: '',
     save: false,
     opts: { base: true, edges: false, wide: true },
@@ -459,25 +495,20 @@ async function submitForm(msg) {
     update(msg);
     return;
   }
-  const breakpoints = numList(d.breakpoints);
-  const bad = String(d.breakpoints || '').split(/[,\s]+/).filter(Boolean).filter((x) => !/^\d{3,4}(px)?$/i.test(x) || !numList(x).length);
-  if (bad.length) {
-    d.error = `These breakpoints aren't valid widths (280–3840px): ${bad.join(', ')}`;
-    update(msg);
-    return;
-  }
+  // a value typed in the add field but not added yet still counts
+  const pending = Number(root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`)?.value);
+  const breakpoints = numList([...numList(d.breakpoints), pending].join(','));
   // the submitted form becomes the user's message (the setup card below repeats the details)
   state.messages = state.messages.filter((m) => m !== msg);
   root.querySelector(`.msg[data-mid="${msg.id}"]`)?.remove();
   add('user', 'text', { text: `Compare ${d.original} with ${d.migrated}${breakpoints.length ? `, breakpoints ${breakpoints.join(', ')}` : ''}` });
   if (d.save && breakpoints.length) {
     api('/api/sites', {
-      host: hostOf(d.original), breakpoints, widthOptions: d.opts, extraWidths: numList(d.widths), hideSelectors: DEFAULT_HIDE,
+      host: hostOf(d.original), breakpoints, widthOptions: d.opts, hideSelectors: DEFAULT_HIDE,
     }).catch(() => {});
   }
   await startComparison(d.original, d.migrated, {
     breakpoints,
-    widths: numList(d.widths),
     opts: d.opts,
     ignore: String(d.ignore || '').split('\n').map((s) => s.trim()).filter(Boolean),
     autoRun: true,
@@ -489,7 +520,8 @@ async function submitForm(msg) {
 async function renderVisual(focus = {}) {
   const panel = root.querySelector('.visual-col');
   root.classList.toggle('with-visual', state.visual);
-  root.querySelector('#visual-toggle').checked = state.visual;
+  const toggle = document.getElementById('visual-toggle');
+  if (toggle) toggle.checked = state.visual;
   workspace?.destroy();
   workspace = null;
   if (!state.visual) { panel.innerHTML = ''; return; }
@@ -708,7 +740,7 @@ function renderSuggestions() {
   let items;
   const running = state.messages.some((m) => m.type === 'progress' && m.data.status === 'running');
   if (running) items = ['How does it work?'];
-  else if (pendingSetup()) items = ['Run comparison', 'Add edge widths', 'Add breakpoint 1280', 'Also test 1920'];
+  else if (pendingSetup()) items = ['Run comparison', 'Add breakpoint 1280', 'Add edge widths'];
   else if (state.reportId) {
     items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'Download PDF report', state.visual ? 'Hide visual parity' : 'Show visual parity', 'New comparison'];
   } else items = ['New comparison', 'Try the demo', 'How does it work?', 'Show history'];
@@ -742,24 +774,46 @@ function onAction(e) {
   if (action === 'form') addForm(); // eslint-disable-line no-use-before-define
   if (action === 'form-demo' && msg) {
     Object.assign(msg.data, {
-      original: `${window.location.origin}/demo/original.html`, migrated: `${window.location.origin}/demo/migrated.html`, breakpoints: '640, 1024',
+      original: `${window.location.origin}/demo/original.html`, migrated: `${window.location.origin}/demo/migrated.html`, breakpoints: [640, 1024],
     });
+    update(msg);
+  }
+  if (action === 'form-bp-add' && msg) addFormBreakpoint(msg); // eslint-disable-line no-use-before-define
+  if (action === 'form-bp-remove' && msg) {
+    msg.data.breakpoints = numList(msg.data.breakpoints).filter((b) => b !== Number(el.dataset.px));
+    msg.data.bpError = '';
+    update(msg);
+  }
+  if (action === 'form-bp-preset' && msg) {
+    const v = Number(el.dataset.px);
+    const bps = numList(msg.data.breakpoints);
+    msg.data.breakpoints = bps.includes(v) ? bps.filter((b) => b !== v) : numList([...bps, v].join(','));
+    msg.data.bpError = '';
+    update(msg);
+  }
+  if (action === 'form-bp-clear' && msg) {
+    Object.assign(msg.data, { breakpoints: [], note: '', bpError: '' });
     update(msg);
   }
   if (action === 'form-detect' && msg) {
     const d = msg.data;
     if (!/^https?:\/\//.test(d.original)) {
-      d.error = 'Enter the original page URL first.';
-      update(msg);
+      d.bpError = 'Enter the original page URL first, then detect.';
+      update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] input[name="original"]`)?.focus());
       return;
     }
     el.disabled = true;
     el.textContent = 'Detecting…';
     api('/api/breakpoints', { url: d.original }).then((det) => {
+      const added = det.suggested.filter((b) => !numList(d.breakpoints).includes(b));
       Object.assign(d, {
-        breakpoints: det.suggested.join(', '), note: `Found in ${det.mediaRules} media rules on the original. Edit as you like.`, error: '',
+        breakpoints: numList([...numList(d.breakpoints), ...det.suggested].join(',')),
+        note: det.suggested.length
+          ? `Detected ${det.suggested.join(', ')}px from ${det.mediaRules} media rules on the original${added.length ? '' : ' (already in your list)'}. Remove any you don't need.`
+          : 'No media-query breakpoints found on the original. Add your own.',
+        bpError: '',
       });
-    }).catch((err) => { d.error = `Couldn't read the original: ${err.message}`; }).finally(() => update(msg));
+    }).catch((err) => { d.bpError = `Couldn't read the original: ${err.message}`; }).finally(() => update(msg));
   }
   if (action === 'save-site' && msg) {
     const d = msg.data;
@@ -785,14 +839,13 @@ function onAction(e) {
 
 export function mountChat(app, params) {
   load();
+  // chat controls live in the top bar, next to Chat / History
+  const actions = document.getElementById('topbar-actions');
+  actions.innerHTML = `<label class="switch" title="Show both pages side by side with issues marked">
+      <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
+    <button type="button" class="btn tiny" id="new-chat">New chat</button>`;
   app.innerHTML = `<div class="chat-app">
     <section class="chat-col">
-      <div class="chat-bar">
-        <div class="chat-title"><b>Parity assistant</b><span class="muted">Runs locally, no AI service</span></div>
-        <label class="switch" title="Show both pages side by side with issues marked">
-          <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>
-        <button type="button" class="btn tiny" id="new-chat">New chat</button>
-      </div>
       <div class="messages" aria-live="polite"></div>
       <div class="composer">
         <div class="suggestions"></div>
@@ -808,9 +861,9 @@ export function mountChat(app, params) {
   </div>`;
   root = app.querySelector('.chat-app');
   root.addEventListener('click', onAction);
+  actions.querySelector('#visual-toggle').addEventListener('change', (e) => setVisual(e.target.checked));
   root.addEventListener('change', (e) => {
     const el = e.target;
-    if (el.id === 'visual-toggle') setVisual(el.checked);
     if (el.dataset.action === 'opt') {
       const msg = state.messages.find((m) => m.id === Number(el.dataset.mid));
       if (msg?.data.status === 'ready') { msg.data.opts[el.dataset.k] = el.checked; update(msg); }
@@ -818,6 +871,12 @@ export function mountChat(app, params) {
   });
   root.addEventListener('keydown', (e) => {
     const el = e.target;
+    if (el.matches('.bp-add-input') && e.key === 'Enter') {
+      e.preventDefault(); // add the breakpoint, don't submit the form
+      const msg = state.messages.find((m) => m.id === Number(el.dataset.mid));
+      if (msg) addFormBreakpoint(msg);
+      return;
+    }
     if (el.matches('.add-inline input') && e.key === 'Enter') {
       e.preventDefault();
       const v = Number(el.value);
@@ -851,7 +910,7 @@ export function mountChat(app, params) {
     const saved = (await api('/api/sites').catch(() => ({})))[hostOf(e.target.value)];
     if (msg && saved?.breakpoints?.length && !numList(msg.data.breakpoints).length) {
       Object.assign(msg.data, {
-        breakpoints: saved.breakpoints.join(', '), note: `Loaded the breakpoints saved for ${hostOf(e.target.value)}.`, opts: { ...msg.data.opts, ...(saved.widthOptions || {}) },
+        breakpoints: saved.breakpoints, note: `Loaded the breakpoints saved for ${hostOf(e.target.value)}.`, opts: { ...msg.data.opts, ...(saved.widthOptions || {}) },
       });
       update(msg);
     }
@@ -877,7 +936,7 @@ export function mountChat(app, params) {
     grow();
     send(text);
   });
-  root.querySelector('#new-chat').addEventListener('click', () => {
+  actions.querySelector('#new-chat').addEventListener('click', () => {
     Object.assign(state, {
       messages: [], reportId: null, visualWidth: null, pending: {},
     });

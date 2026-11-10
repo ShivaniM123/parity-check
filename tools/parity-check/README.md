@@ -19,15 +19,21 @@ The app opens as a chat. Requests are understood by simple local rules, with no 
 
 Start a comparison either way:
 
-- **Form** (shown in the welcome message, or the *Form* button next to *Send*): original URL, migrated URL and **breakpoints** (comma-separated). *Detect* fills the breakpoints in from the original's CSS, and you can edit them before running. There are also toggles for mobile 375 / edges (breakpoint − 1px) / desktop 1440, extra widths, optional selectors to ignore (chat widgets, ads, live feeds) and *Save breakpoints for this site*.
-- **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. Other numbers are extra test widths (`… at 375, 1920`). If you paste one URL, the chat asks for the other.
+- **Form** (shown in the welcome message, or the *Form* button next to *Send*): original URL, migrated URL and a **breakpoint block**:
+  - each breakpoint is a chip; × removes it, *Clear all* removes every one;
+  - type a width in px and press *Enter* or *+ Add breakpoint* (invalid or duplicate values get an inline message);
+  - *Common* presets (480, 600, 768, 900, 1024, 1200, 1280, 1440) add or remove a breakpoint in one click;
+  - *Detect from original* adds the breakpoints found in the original's CSS to your list, and you remove any you don't need.
+
+  If you leave it empty, breakpoints are detected when you run. There are also toggles to also test mobile 375 / edges (breakpoint − 1px) / desktop 1440, optional selectors to ignore (chat widgets, ads, live feeds) and *Save breakpoints for this site*. A live preview shows the widths that will be tested.
+- **Typed**, e.g. `compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024, 1280`. Your breakpoints are used as-is and the comparison runs right away. Without `breakpoints …`, the chat detects them from the original and shows them on a setup card first. If you paste one URL, the chat asks for the other.
 
 The migrated page can also be `http://localhost:3000/{path}` while running `aem up`.
 
 **Breakpoint detection** reads every `@media` rule from all the original's stylesheets, cross-origin ones included. `min-width`, `max-width` (767px → 768), range syntax (`width >= 900px`) and `em`/`rem` units are all understood.
 
 **On the setup card**, before running, breakpoints are editable chips: click × to remove one, type in *+ breakpoint* to add one, or click a detected bar. You can also type:
-`add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `add edge widths` · `also test 1920` · `run`.
+`add breakpoint 1280` · `remove 640` · `breakpoints 600, 900, 1200` (replaces them) · `add edge widths` · `run`.
 
 Breakpoints saved for a site (`sites.json`, per host) are reused automatically, so each site keeps its own breakpoints. Commit the file to share them.
 
@@ -40,7 +46,7 @@ Then ask follow-up questions:
 | `issue #3 at 375` | One issue with Original/Migrated close-ups and its fix |
 | `show all fixes` · `fixes for cards` | CSS merged per file, ready to copy |
 | `breakpoints` | Original vs migrated breakpoints, with a re-run at the mismatched widths |
-| `re-run and also test 1920` | New comparison with extra widths |
+| `re-run` | Same comparison again, with the same breakpoints |
 | `download the PDF report` · `download html` | The report file (see below) |
 | `history` | Earlier comparisons, which can be reopened in the chat |
 

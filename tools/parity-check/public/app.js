@@ -94,6 +94,7 @@ async function renderHistory() {
 
 function route() {
   teardown?.();
+  document.getElementById('topbar-actions').innerHTML = ''; // only the chat puts controls here
   teardown = null;
   const [path, query] = window.location.hash.replace(/^#/, '').split('?');
   const params = new URLSearchParams(query || '');
