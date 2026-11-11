@@ -78,9 +78,6 @@ function setupHtml(msg) {
 
 const numList = (s) => [...new Set(String(s || '').split(/[^\d]+/).map(Number).filter((n) => n >= 280 && n <= 3840))].sort((a, b) => a - b);
 
-// the form's "Will test …" line
-const previewWidths = (d) => (numList(d.breakpoints).length ? `${numList(d.breakpoints).join(', ')}px` : 'the breakpoints detected from the original');
-
 function formWidths(d) {
   return testWidths(numList(d.breakpoints));
 }
@@ -95,7 +92,7 @@ function bpBlockHtml(d, id) {
     <legend>Breakpoints</legend>
     <div class="bp-chips" aria-live="polite">
       ${bps.length ? bps.map((b) => `<span class="bp-chip">${b}px<button type="button" data-action="form-bp-remove" data-mid="${id}" data-px="${b}" aria-label="Remove ${b}px">×</button></span>`).join('')
-    : '<span class="bp-empty">No breakpoints yet. Add your own, pick common ones, or detect them from the original. Left empty, they\'re detected when you run.</span>'}
+    : '<span class="bp-empty">None yet. Leave empty to detect them from the original when you run.</span>'}
       ${bps.length > 1 ? `<button type="button" class="btn link bp-clear" data-action="form-bp-clear" data-mid="${id}">Clear all</button>` : ''}
     </div>
     <div class="bp-add">
@@ -131,7 +128,6 @@ function formHtml(msg) {
     ${bpBlockHtml(d, id)}
     <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
       <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
-    <p class="f-preview">Will test <b class="f-widths">${previewWidths(d)}</b></p>
     ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
     <div class="actions">
       <button type="submit" class="btn primary">Run comparison</button>
@@ -973,11 +969,14 @@ function renderSuggestions() {
   if (!box) return;
   let items;
   const running = state.messages.some((m) => m.type === 'progress' && m.data.status === 'running');
+  const last = state.messages[state.messages.length - 1];
+  const formOpen = last?.type === 'form' && last.data.status === 'editing';
   if (running) items = ['How does it work?'];
   else if (pendingSetup()) items = ['Run comparison', 'Add breakpoint 1280'];
   else if (state.reportId) {
     items = ['Show high issues', 'What\'s wrong on mobile?', 'Show all fixes', 'New comparison']; // the summary card has the download and visual buttons
-  } else items = ['New comparison', 'Try the demo', 'How does it work?', 'Show history'];
+  } else items = formOpen ? ['How does it work?'] : ['New comparison', 'How does it work?']; // the form has the demo link, the top bar has History
+  root.querySelector('.form-btn').hidden = formOpen; // the form is already the last message
   box.innerHTML = items.map((s) => `<button type="button" class="sugg" data-action="say" data-text="${esc(s)}">${esc(s)}</button>`).join('');
 }
 
@@ -1114,7 +1113,7 @@ export function mountChat(app, params) {
       }
     }
   });
-  // form card: keep its values in the message (so a reload restores them) and the preview live
+  // form card: keep its values in the message (so a reload restores them)
   root.addEventListener('input', (e) => {
     const card = e.target.closest('.form-msg');
     if (!card) return;
@@ -1122,7 +1121,6 @@ export function mountChat(app, params) {
     if (!msg) return;
     const { name, value } = e.target;
     if (name) msg.data[name] = value;
-    card.querySelector('.f-widths').textContent = previewWidths(msg.data);
     save();
   });
   // URL fields: fix up a missing https://, check as you leave the field, and recall
@@ -1195,8 +1193,7 @@ export function mountChat(app, params) {
   };
 
   if (!state.messages.length) {
-    say(`<p>Hi! I check the <b>visual parity</b> between an original page and its migrated page, at the breakpoints you choose.</p>
-      <p>Fill in the form below, or just type it, e.g. <code>compare https://www.example.com/about with https://main--site--org.aem.page/about breakpoints 768, 1024</code>.</p>`);
+    say('<p>Compare an original page with its migrated page at your site\'s breakpoints. Fill in the form, or paste both URLs in the box below.</p>');
     addForm();
   } else {
     // replay the conversation; reconnect to comparisons that were still running

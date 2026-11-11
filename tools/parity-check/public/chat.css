@@ -210,7 +210,6 @@ body.route-chat .nav-chat { display: none; }
 .f-note:empty { display: none; }
 .f-more summary { cursor: pointer; font-size: 12.5px; font-weight: 500; }
 .f-more textarea { margin-top: 6px; }
-.f-preview { margin: 0; font-size: 12.5px; color: var(--text-2); }
 .form-msg .actions { margin-top: 2px; align-items: center; }
 .form-msg .err { margin: 0; }
 
