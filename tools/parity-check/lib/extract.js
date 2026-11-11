@@ -243,7 +243,7 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
   };
 
   const isVisible = (el, r) => {
-    if (r.w < 1 || r.h < 1) return false;
+    if (r.w < 2 || r.h < 2) return false; // 1px frames/pixels (trackers, unplaced widgets) are not visible content
     // opacity is ignored on purpose: scroll-reveal animations leave content at opacity 0
     if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true })) return false;
     if (r.x + r.w <= 0 || r.x >= vw + sx) return false; // off-canvas
@@ -298,12 +298,15 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
   const media = [...document.querySelectorAll('img, svg, video, iframe, input:not([type=hidden]), select, textarea')]
     .filter((el) => !(el.tagName === 'svg' && el.parentElement.closest('svg')));
   media.forEach((el) => owners.add(el));
+  // a container picked up only for its background image is that image: its text belongs
+  // to the headings/paragraphs inside it, which are compared on their own
+  const bgOnly = new Set();
   document.querySelectorAll('body *').forEach((el) => {
     if (el.tagName === 'svg' || el.closest('svg')) return;
     const bi = getComputedStyle(el).backgroundImage;
     if (bi && bi.includes('url(')) {
       const r = el.getBoundingClientRect();
-      if (r.width >= 120 && r.height >= 80) owners.add(el);
+      if (r.width >= 120 && r.height >= 80 && !owners.has(el)) { owners.add(el); bgOnly.add(el); }
     }
   });
 
@@ -316,14 +319,14 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     const r = rectOf(el);
     const visible = isVisible(el, r);
     let kind = kindOf(el) || 'text';
-    const isMedia = ['img', 'svg', 'video', 'iframe'].includes(tag)
+    const isMedia = ['img', 'svg', 'video', 'iframe'].includes(tag) || bgOnly.has(el)
       || (!kindOf(el) && cs.backgroundImage.includes('url(') && !norm(el.innerText));
     if (isMedia) kind = 'image';
     if (['input', 'select', 'textarea'].includes(tag)) kind = 'control';
     if (kind === 'image' && tag === 'svg' && r.w < 24 && r.h < 24) return; // tiny icons
     if (!visible && kind === 'image') return;
 
-    let text = norm(el.innerText || el.textContent);
+    let text = bgOnly.has(el) ? '' : norm(el.innerText || el.textContent);
     const labelOnly = !text; // no visible text: the label below comes from aria-label/alt/title (icons)
     if (!text) text = norm(el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('placeholder'));
     if (kind !== 'image' && kind !== 'control' && !text && kind !== 'action') return;
@@ -359,6 +362,8 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
         fontStack: cs.fontFamily,
         fontSize: fs,
         fontWeight: parseInt(cs.fontWeight, 10) || 400,
+        // may the browser fake a bold when the font has no bold face? ('none' = no)
+        synthWeight: cs.fontSynthesisWeight || (/weight/.test(cs.fontSynthesis || 'weight') ? 'auto' : 'none'),
         fontStyle: cs.fontStyle,
         lineHeight: lh,
         letterSpacing: cs.letterSpacing === 'normal' ? 0 : px(cs.letterSpacing),
@@ -430,6 +435,9 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
           const top = Math.min(...rects.map((q) => q.top));
           const bottom = Math.max(...rects.map((q) => q.bottom));
           rec.ink = { y: Math.round(top + sy - ty), h: Math.round(bottom - top) };
+          // lines actually drawn: distinct line tops (fragments of one line share a top)
+          const tops = [...new Set(rects.map((q) => Math.round(q.top)))].sort((a, b) => a - b);
+          rec.inkLines = tops.filter((t, k) => !k || t - tops[k - 1] > Math.max(4, fs * 0.5)).length;
         }
       } catch (e) { /* no text range */ }
     }

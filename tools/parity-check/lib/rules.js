@@ -94,6 +94,38 @@ function unionRect(rects) {
 const contains = (a, b) => a !== b && b.x >= a.x && b.y >= a.y
   && b.x + b.w <= a.x + a.w + 1 && b.y + b.h <= a.y + a.h + 1;
 
+/**
+ * How much of a text box is covered by glyphs: pixels that differ clearly from the box's
+ * most common colour (its background). Bold text covers noticeably more than regular.
+ */
+function inkCoverage(img, r) {
+  if (!img || !r || r.w < 4 || r.h < 4) return null;
+  const x0 = Math.max(0, Math.round(r.x));
+  const y0 = Math.max(0, Math.round(r.y));
+  const x1 = Math.min(img.width, Math.round(r.x + r.w));
+  const y1 = Math.min(img.height, Math.round(r.y + r.h));
+  if (x1 - x0 < 4 || y1 - y0 < 4) return null;
+  const counts = new Map();
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const k = (y * img.width + x) * 4;
+      const key = (img.data[k] >> 4) * 256 + (img.data[k + 1] >> 4) * 16 + (img.data[k + 2] >> 4); // eslint-disable-line no-bitwise
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  const bgKey = [...counts.entries()].sort((p, q) => q[1] - p[1])[0][0];
+  const bg = [((bgKey >> 8) & 15) * 16 + 8, ((bgKey >> 4) & 15) * 16 + 8, (bgKey & 15) * 16 + 8]; // eslint-disable-line no-bitwise
+  let ink = 0;
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const k = (y * img.width + x) * 4;
+      const dist = Math.abs(img.data[k] - bg[0]) + Math.abs(img.data[k + 1] - bg[1]) + Math.abs(img.data[k + 2] - bg[2]);
+      if (dist > 120) ink += 1;
+    }
+  }
+  return ink / ((x1 - x0) * (y1 - y0));
+}
+
 export function analyzeWidth({
   width, orig, mig, match, diff,
 }) {
@@ -164,7 +196,27 @@ export function analyzeWidth({
           fix: { file, selector: m.selector, decl: [decl('font-size', pxv(os.fontSize), 'length', os.fontSize)] },
         });
       }
-      if (Math.abs(ms.fontWeight - os.fontWeight) >= 100) {
+      // the weight that is drawn: asking for bold from a font with no bold face gives the
+      // regular face when the site turns off fake bold (font-synthesis), so it looks regular
+      const drawnWeight = (e, page) => {
+        const w = e.s.fontWeight;
+        if (w < 600) return w;
+        const fam = (e.s.fontFamily || '').toLowerCase();
+        const faces = (page.fonts || []).filter((f) => f.status === 'loaded' && f.family.toLowerCase() === fam);
+        if (!faces.length) return w; // system or unknown font: trust the value
+        const bold = faces.some((f) => (f.weight === 'bold' ? 700 : parseInt(f.weight, 10) || 400) >= 600);
+        return bold || e.s.synthWeight !== 'none' ? w : 400;
+      };
+      // and confirm on the screenshots: same glyphs drawn bolder cover more of their box
+      const looksSameWeight = () => {
+        const box = (e) => (e.ink ? { x: e.rect.x, y: e.ink.y, w: e.rect.w, h: e.ink.h } : e.rect);
+        const io = inkCoverage(diff?.shots?.o, box(o));
+        const im = inkCoverage(diff?.shots?.m, box(m));
+        if (io == null || im == null || !io || !im || textKey(o.text) !== textKey(m.text)) return false;
+        const heavier = drawnWeight(m, mig) > drawnWeight(o, orig) ? im / io : io / im;
+        return heavier < 1.12; // bolder by 100+ adds well over 12% ink
+      };
+      if (Math.abs(drawnWeight(m, mig) - drawnWeight(o, orig)) >= 100 && !looksSameWeight()) {
         add({
           ...base,
           category: 'typography',
@@ -179,7 +231,16 @@ export function analyzeWidth({
       }
       const of = os.fontFamily.toLowerCase();
       const mf = ms.fontFamily.toLowerCase().replace(/-fallback$/, '');
-      if (of && mf && of !== mf) {
+      // the same typeface under another face name ("Graphik Semibold" vs "Graphik Regular"
+      // drawn bold) that covers the same ink on screen looks the same: not a difference
+      const sameTypeface = of.split(/[\s-]+/)[0] === mf.split(/[\s-]+/)[0];
+      const sameInk = () => {
+        const box = (e) => (e.ink ? { x: e.rect.x, y: e.ink.y, w: e.rect.w, h: e.ink.h } : e.rect);
+        const io = inkCoverage(diff?.shots?.o, box(o));
+        const im = inkCoverage(diff?.shots?.m, box(m));
+        return !!io && !!im && Math.max(io, im) / Math.min(io, im) < 1.12;
+      };
+      if (of && mf && of !== mf && !(sameTypeface && textKey(o.text) === textKey(m.text) && sameInk())) {
         const scope = o.kind === 'heading' ? 'heading' : 'body';
         const key = `${scope}|${of}|${mf}`;
         if (!fontGroups.has(key)) fontGroups.set(key, { scope, o, m, rects: [], count: 0 });
@@ -214,7 +275,9 @@ export function analyzeWidth({
           fix: { file, selector: m.selector, decl: [{ prop: 'letter-spacing', value: os.letterSpacing ? pxv(os.letterSpacing) : 'normal' }] },
         });
       }
-      if (os.textTransform !== ms.textTransform) {
+      // only when it shows: text authored in capitals needs no uppercase transform (the text
+      // read from the page is already as displayed, transform applied)
+      if (os.textTransform !== ms.textTransform && o.text !== m.text) {
         add({
           ...base,
           category: 'typography',
@@ -270,13 +333,14 @@ export function analyzeWidth({
         });
       }
       // wrapping: same text spans a different number of lines
-      if (!split && o.lines && m.lines && o.lines !== m.lines && Math.abs(fsDiff) <= 1 && pct(o.rect.w, m.rect.w) > 0.1 && Math.abs(o.rect.w - m.rect.w) > 24) {
+      const linesOf = (e) => e.inkLines || e.lines;
+      if (!split && linesOf(o) && linesOf(m) && linesOf(o) !== linesOf(m) && Math.abs(fsDiff) <= 1 && pct(o.rect.w, m.rect.w) > 0.1 && Math.abs(o.rect.w - m.rect.w) > 24) {
         add({
           ...base,
           category: 'layout',
           property: 'max-width',
           severity: 'low',
-          title: `Text wraps to ${m.lines} line${m.lines > 1 ? 's' : ''}, original ${o.lines}`,
+          title: `Text wraps to ${linesOf(m)} line${linesOf(m) > 1 ? 's' : ''}, original ${linesOf(o)}`,
           detail: `Text box is ${m.rect.w}px wide vs ${o.rect.w}px in the original.`,
           ov: `${o.rect.w}px`,
           mv: `${m.rect.w}px`,
@@ -287,7 +351,15 @@ export function analyzeWidth({
 
     // effective background (section / card backgrounds)
     const boxed = o.kind === 'action' && (os.ownBg || ms.ownBg); // covered by the component rule
-    if (!boxed && os.bg !== 'image' && ms.bg !== 'image') {
+    // text drawn over a photo (hero, banner): what is behind it is the photo, not the
+    // colour of the box under the photo or a translucent overlay
+    const overPhoto = (e, els) => {
+      const cx = e.rect.x + e.rect.w / 2;
+      const cy = e.rect.y + e.rect.h / 2;
+      return els.some((x) => x.kind === 'image' && x.visible && x !== e && x.rect.w * x.rect.h > e.rect.w * e.rect.h
+        && cx >= x.rect.x && cx <= x.rect.x + x.rect.w && cy >= x.rect.y && cy <= x.rect.y + x.rect.h);
+    };
+    if (!boxed && textual(o) && textual(m) && os.bg !== 'image' && ms.bg !== 'image' && !overPhoto(o, orig.elements) && !overPhoto(m, mig.elements)) {
       const bd = colorDistance(os.bg, ms.bg);
       if (bd > 18) {
         add({
@@ -509,8 +581,8 @@ export function analyzeWidth({
         property: prop,
         groupBy: `${target.selector}|${prop}|${go}|${gm}`,
         severity: Math.abs(delta) > 24 ? 'medium' : 'low',
-        title: `Gap above “${short(b.o.text, 30) || b.o.tag}” is ${gm}px, original ${go}px`,
-        detail: `Measured from “${short(above.o.text, 30) || above.o.tag}”. ${delta > 0 ? 'Add' : 'Remove'} ${Math.abs(delta)}px.`,
+        title: `Gap above ${b.o.text ? `“${short(b.o.text, 30)}”` : `the ${b.o.kind === 'image' ? 'image' : b.o.tag}`} is ${gm}px, original ${go}px`,
+        detail: `Measured from ${above.o.text ? `“${short(above.o.text, 30)}”` : `the ${above.o.kind === 'image' ? 'image' : above.o.tag} above`}. ${delta > 0 ? 'Add' : 'Remove'} ${Math.abs(delta)}px.`,
         ov: `${go}px`,
         mv: `${gm}px`,
         fix: {

@@ -37,7 +37,12 @@ export async function capturePage(browser, url, {
     const response = await page.goto(url, { waitUntil: 'load', timeout });
     await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     await page.evaluate(autoScroll, { maxHeight }).catch(() => {});
+    // Edge Delivery loads third-party scripts (donate tabs, chat, consent, analytics widgets)
+    // about 3 s after load (scripts/delayed.js). Capture after that, or those widgets are
+    // reported missing while they are just not loaded yet.
+    await page.waitForFunction(() => performance.now() > 5000, null, { timeout: 8000, polling: 250 }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(500);
     // social embeds render late (a provider script swaps the fallback for an iframe);
     // only worth waiting for when the provider script is actually on the page
     const pendingEmbeds = await page.evaluate(
@@ -50,16 +55,26 @@ export async function capturePage(browser, url, {
     await page.addStyleTag({ content: FREEZE_CSS }).catch(() => {});
     await page.evaluate(() => document.fonts.ready.then(() => true)).catch(() => {});
     await page.waitForTimeout(waitMs);
-    const data = await page.evaluate(extractPage, { hideSelectors });
-    const shotHeight = Math.max(1, Math.min(data.height, maxHeight));
+    // screenshot first, then read the page: late widgets (a donate tab, chat bubble) that
+    // appear in the screenshot are then in the data too, instead of showing in the picture
+    // but being reported missing. Hidden elements are hidden for both.
+    await page.evaluate((sels) => {
+      const style = document.createElement('style');
+      style.textContent = sels.map((s) => {
+        try { document.querySelector(s); return `${s} { display: none !important; }`; } catch (e) { return ''; }
+      }).join('\n');
+      document.head.appendChild(style);
+    }, hideSelectors).catch(() => {});
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight).catch(() => maxHeight);
     const png = await page.screenshot({
       fullPage: true,
       clip: {
-        x: 0, y: 0, width, height: shotHeight,
+        x: 0, y: 0, width, height: Math.max(1, Math.min(pageHeight, maxHeight)),
       },
       animations: 'disabled',
       timeout,
     });
+    const data = await page.evaluate(extractPage, { hideSelectors });
     data.status = response ? response.status() : 0;
     data.consoleErrors = consoleErrors;
     data.failedRequests = failedRequests;

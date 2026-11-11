@@ -143,12 +143,14 @@ export function matchElements(orig, mig, { origHeight, migHeight }) {
   };
 
   // pass 2: exact text with duplicates, closest predicted position wins
+  const dup = [];
   oText.forEach((o) => {
     if (pairs.has(o.i)) return;
-    const cands = (byKey.get(textKey(o.text)) || []).filter((m) => !used.has(m.i) && compatible(o, m));
-    if (!cands.length) return;
-    cands.sort((p, q) => score(o, q, 1) - score(o, p, 1));
-    take(o, cands[0]);
+    (byKey.get(textKey(o.text)) || []).filter((m) => !used.has(m.i) && compatible(o, m))
+      .forEach((m) => dup.push({ o, m, s: score(o, m, 1) }));
+  });
+  dup.sort((p, q) => q.s - p.s).forEach(({ o, m }) => {
+    if (!pairs.has(o.i) && !used.has(m.i)) take(o, m);
   });
 
   anchors = [...pairs.entries()]

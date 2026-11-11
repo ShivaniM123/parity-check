@@ -99,5 +99,7 @@ export function diffScreenshots(bufA, bufB, { threshold = 0.1 } = {}) {
     changed,
     similarity: Math.round((1 - changed / (width * height)) * 1000) / 10,
     regions: hotspots(mask, width, height),
+    // decoded screenshots (same size), for checks that look at what is actually drawn
+    shots: { o: a, m: b },
   };
 }
