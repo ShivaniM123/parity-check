@@ -211,14 +211,17 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     const parent = translateOf(el.parentElement);
     const cs = getComputedStyle(el);
     let { tx, ty } = parent;
-    if (cs.transform && cs.transform !== 'none') {
+    // only an element still waiting for its scroll-reveal (faded out) is shifted on purpose;
+    // a visible element's transform is layout (e.g. left: 50% + translateX(-50%) centring)
+    const revealing = parseFloat(cs.opacity) < 0.99;
+    if (revealing && cs.transform && cs.transform !== 'none') {
       try {
         const m = new DOMMatrixReadOnly(cs.transform);
         tx += m.m41;
         ty += m.m42;
       } catch (e) { /* unsupported matrix */ }
     }
-    if (cs.translate && cs.translate !== 'none') {
+    if (revealing && cs.translate && cs.translate !== 'none') {
       const [x = '0', y = '0'] = cs.translate.split(/\s+/);
       tx += parseFloat(x) || 0;
       ty += parseFloat(y) || 0;
@@ -321,6 +324,7 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     if (!visible && kind === 'image') return;
 
     let text = norm(el.innerText || el.textContent);
+    const labelOnly = !text; // no visible text: the label below comes from aria-label/alt/title (icons)
     if (!text) text = norm(el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('placeholder'));
     if (kind !== 'image' && kind !== 'control' && !text && kind !== 'action') return;
 
@@ -331,7 +335,8 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
       i: index,
       kind,
       tag,
-      text: text.slice(0, 200),
+      text: text.slice(0, 1000), // long enough to find a paragraph inside a quote or card
+      labelOnly,
       visible,
       rect: r,
       path: pathOf(el),
@@ -399,8 +404,35 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
       if (src) rec.src = src;
       rec.alt = el.getAttribute('aria-label') || '';
     }
+    if (kind === 'image') {
+      const owner = el.closest('a, button');
+      rec.label = norm(rec.alt || (owner && (owner.getAttribute('aria-label') || owner.getAttribute('title') || owner.innerText)) || '').slice(0, 120);
+    }
     if (visible) rec.anc = ancestorsOf(el);
     if (visible && kind !== 'image') rec.lines = lh ? Math.max(1, Math.round((r.h - rec.s.pt - rec.s.pb) / lh)) : 1;
+    // where the text is drawn (its glyph boxes), whatever the box's padding or line-height:
+    // spacing is judged on this, so a taller box around text that sits in the same place
+    // is not reported as a gap difference
+    if (visible && kind !== 'image' && kind !== 'control') {
+      try {
+        // text nodes only: a caption box that also holds its image is drawn where the caption is
+        const range = document.createRange();
+        const rects = [];
+        const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let t = tw.nextNode(); t; t = tw.nextNode()) {
+          if (t.nodeValue.trim()) {
+            range.selectNodeContents(t);
+            rects.push(...[...range.getClientRects()].filter((q) => q.width > 0 && q.height > 0));
+          }
+        }
+        if (rects.length) {
+          const { ty } = translateOf(el);
+          const top = Math.min(...rects.map((q) => q.top));
+          const bottom = Math.max(...rects.map((q) => q.bottom));
+          rec.ink = { y: Math.round(top + sy - ty), h: Math.round(bottom - top) };
+        }
+      } catch (e) { /* no text range */ }
+    }
     elements.push(rec);
     index += 1;
   });
@@ -535,6 +567,19 @@ export function extractPage({ hideSelectors = [], maxElements = 3000 }) {
     overflow: doc.scrollWidth > vw + 1,
     offenders: offenders.sort((a, b) => b.right - a.right).slice(0, 5),
     fonts: [...document.fonts].map((f) => ({ family: f.family.replace(/["']/g, ''), status: f.status, weight: f.weight })),
+    localOnlyFonts: (() => {
+      // @font-face rules whose src is only local() (EDS "-fallback" faces): nothing to download
+      const out = new Set();
+      [...document.styleSheets].forEach((sheet) => {
+        let rules = [];
+        try { rules = [...sheet.cssRules]; } catch (e) { return; }
+        rules.filter((r) => r.type === CSSRule.FONT_FACE_RULE).forEach((r) => {
+          const src = r.style.getPropertyValue('src');
+          if (src && !/url\(/.test(src)) out.add(r.style.getPropertyValue('font-family').replace(/["']/g, '').trim().toLowerCase());
+        });
+      });
+      return [...out];
+    })(),
     isEds: !!document.querySelector('main .section, .block[data-block-name]'),
     embeds,
     embedLinks: embedLinks.slice(0, 50),

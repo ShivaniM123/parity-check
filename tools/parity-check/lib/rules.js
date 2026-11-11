@@ -132,11 +132,17 @@ export function analyzeWidth({
 
   // third-party embed content is compared as a whole by the embed rule, not element by element
   const visiblePairs = match.matched.filter(({ o, m }) => o.visible && m.visible && !o.embed && !m.embed);
+  // icons paired by position (an <img> on one page, a CSS icon button on the other) are
+  // the same control built differently: their font, colour and box styles don't compare
+  const stylePairs = visiblePairs.filter((p) => !p.icon);
+  // text split or merged differently (one paragraph vs two) has the same styles, but its
+  // boxes differ in size by construction: leave it out of size, wrap and spacing checks
+  const geomPairs = visiblePairs.filter((p) => !p.icon && !p.split);
   const textual = (e) => ['heading', 'text', 'action'].includes(e.kind);
 
   // ---------- typography / colour / component styles ----------
   const fontGroups = new Map();
-  visiblePairs.forEach(({ o, m }) => {
+  stylePairs.forEach(({ o, m, split }) => {
     const os = o.s;
     const ms = m.s;
     const file = fileFor(m, isEds);
@@ -181,7 +187,8 @@ export function analyzeWidth({
         g.count += 1;
         if (g.rects.length < 12) g.rects.push(m.rect);
       }
-      if (Math.abs(ms.lineHeight - os.lineHeight) > 2 && pct(os.lineHeight, ms.lineHeight) > 0.08) {
+      const multiLine = (o.lines || 1) > 1 || (m.lines || 1) > 1;
+      if (multiLine && Math.abs(ms.lineHeight - os.lineHeight) > 2 && pct(os.lineHeight, ms.lineHeight) > 0.08) {
         add({
           ...base,
           category: 'typography',
@@ -263,7 +270,7 @@ export function analyzeWidth({
         });
       }
       // wrapping: same text spans a different number of lines
-      if (o.lines && m.lines && o.lines !== m.lines && Math.abs(fsDiff) <= 1 && pct(o.rect.w, m.rect.w) > 0.1 && Math.abs(o.rect.w - m.rect.w) > 24) {
+      if (!split && o.lines && m.lines && o.lines !== m.lines && Math.abs(fsDiff) <= 1 && pct(o.rect.w, m.rect.w) > 0.1 && Math.abs(o.rect.w - m.rect.w) > 24) {
         add({
           ...base,
           category: 'layout',
@@ -439,7 +446,7 @@ export function analyzeWidth({
   });
 
   // ---------- vertical spacing between consecutive elements ----------
-  const flow = visiblePairs.filter(({ o, m, inOrder }) => inOrder && !o.fixed && !m.fixed && o.kind !== 'control');
+  const flow = geomPairs.filter(({ o, m, inOrder }) => inOrder && !o.fixed && !m.fixed && o.kind !== 'control');
   flow.forEach((b) => {
     let above = null;
     flow.forEach((a) => {
@@ -459,6 +466,13 @@ export function analyzeWidth({
     const go = bo.y - (ao.y + ao.h);
     const gm = bm.y - (am.y + am.h);
     if (go > 400 || gm > 400) return;
+    // the same gap measured between what is drawn (text glyphs, image edges): if that
+    // matches, the boxes differ (padding, line-height) but nothing moves on screen
+    const inkOf = (e) => e.ink || { y: e.rect.y, h: e.rect.h };
+    const inkGap = (a, c) => inkOf(c).y - (inkOf(a).y + inkOf(a).h);
+    const io = inkGap(above.o, b.o);
+    const im = inkGap(above.m, b.m);
+    if (Math.abs(io - im) <= Math.max(8, Math.abs(io) * 0.3)) return;
     // content missing (or added) in between explains the gap: reported as content
     const between = (list, top, bottom) => list.some((e) => e.rect.y < bottom && e.rect.y + e.rect.h > top);
     if (between(match.missing, ao.y + ao.h, bo.y) || between(match.extra, am.y + am.h, bm.y)) return;
@@ -510,12 +524,14 @@ export function analyzeWidth({
   });
 
   // ---------- column layout (cards, columns, grids) ----------
+  const drawn = (e) => (e.ink && e.kind !== 'image' ? { ...e.rect, y: e.ink.y, h: e.ink.h } : e.rect);
   const rowsOf = (items, side) => {
     const rows = [];
-    [...items].sort((p, q) => p[side].rect.y - q[side].rect.y).forEach((it) => {
-      const r = it[side].rect;
-      const row = rows.find((rw) => Math.abs(rw.y - r.y) <= 6
-        && rw.items.every((x) => !overlapX(x[side].rect, r) && pct(x[side].rect.w, r.w) < 0.3));
+    [...items].sort((p, q) => drawn(p[side]).y - drawn(q[side]).y).forEach((it) => {
+      const r = drawn(it[side]);
+      const slack = Math.min(80, r.h * 1.5 + 24); // about two lines of the item
+      const row = rows.find((rw) => Math.abs(rw.y - r.y) <= slack
+        && rw.items.every((x) => !overlapX(drawn(x[side]), r) && pct(drawn(x[side]).w, r.w) < 0.3));
       if (row) row.items.push(it); else rows.push({ y: r.y, items: [it] });
     });
     return rows;
@@ -527,13 +543,24 @@ export function analyzeWidth({
   const layoutSeen = new Map();
   ['image', 'heading', 'action', 'text'].forEach((kind) => {
     // no inOrder filter here: a grid that reflows to fewer columns legitimately changes order
-    const items = visiblePairs.filter(({ o, m }) => o.kind === kind && m.kind === kind && o.region === 'main');
+    const items = geomPairs.filter(({ o, m }) => o.kind === kind && m.kind === kind && o.region === 'main');
     // rows in either page: side by side in the original and stacked in migrated, or the reverse
     const groupsO = rowsOf(items, 'o').filter((r) => r.items.length >= 2).map((r) => r.items);
     const groupsM = rowsOf(items, 'm').filter((r) => r.items.length >= 2).map((r) => r.items);
+    // columns = how many distinct horizontal positions the items take: cards of uneven height
+    // put their last lines at different heights, but they are still side by side
+    const columnsOf = (group, side) => {
+      const cols = [];
+      [...group].sort((p, q) => drawn(p[side]).x - drawn(q[side]).x).forEach((it) => {
+        const r = drawn(it[side]);
+        const col = cols.find((c) => c.some((x) => overlapX(drawn(x[side]), r)));
+        if (col) col.push(it); else cols.push([it]);
+      });
+      return cols.length;
+    };
     [...groupsO, ...groupsM].forEach((group) => {
-      const colsO = Math.max(...rowsOf(group, 'o').map((r) => r.items.length));
-      const colsM = Math.max(...rowsOf(group, 'm').map((r) => r.items.length));
+      const colsO = columnsOf(group, 'o');
+      const colsM = columnsOf(group, 'm');
       if (colsO === colsM) return;
       const row = { items: [...group].sort((p, q) => p.o.rect.y - q.o.rect.y || p.o.rect.x - q.o.rect.x).slice(0, Math.max(colsO, colsM)) };
       const container = lca(group.map((it) => it.m));
@@ -574,7 +601,7 @@ export function analyzeWidth({
   });
 
   // ---------- content container width ----------
-  const mainPairs = visiblePairs.filter(({ o, m }) => o.region === 'main' && m.region === 'main' && textual(o) && o.rect.w < width * 0.98);
+  const mainPairs = geomPairs.filter(({ o, m }) => o.region === 'main' && m.region === 'main' && textual(o) && o.rect.w < width * 0.98);
   if (mainPairs.length >= 5) {
     const lo = percentile(mainPairs.map((p) => p.o.rect.x), 0.1);
     const ro = percentile(mainPairs.map((p) => p.o.rect.x + p.o.rect.w), 0.9);
@@ -624,26 +651,50 @@ export function analyzeWidth({
     });
     return groups;
   };
-  const missingGroups = groupRegions(match.missing.filter((e) => !e.embed).filter((e) => e.text || e.kind === 'image'));
-  const extraGroups = groupRegions(match.extra.filter((e) => !e.embed).filter((e) => (e.text && e.text.length > 2) || e.kind === 'image'));
+  const iconOnly = (e) => e.labelOnly && e.kind !== 'image';
+  const CONSENT = /requires[^.]{0,60}cookies|cookie (preferences|settings)|accept[^.]{0,30}cookies/i;
+  const consentNotes = (mig.elements || []).filter((e) => e.visible && e.region === 'main' && CONSENT.test(e.text || ''));
+  const consentIds = new Set(consentNotes.map((e) => e.i));
+  const missingGroups = groupRegions(match.missing.filter((e) => !e.embed && !iconOnly(e)).filter((e) => e.text || e.kind === 'image'));
+  const extraGroups = groupRegions(match.extra.filter((e) => !e.embed && !iconOnly(e) && !consentIds.has(e.i)
+    && !consentNotes.some((c) => contains(c.rect, e.rect))).filter((e) => (e.text && e.text.length > 2) || e.kind === 'image'));
   // same structure at the same spot but different text: dynamic/randomised content (feeds, search, carousels)
   const swapped = new Set();
   missingGroups.forEach((mg) => {
     const orect = unionRect(mg.items.map((e) => e.rect));
     const sels = new Set(mg.items.map((e) => e.selector));
-    const eg = extraGroups.find((x) => !swapped.has(x) && x.items.some((e) => sels.has(e.selector))
-      && Math.abs(unionRect(x.items.map((e) => e.rect)).y - match.ymap(orect.y)) < Math.max(200, orect.h));
+    const near = (x) => Math.abs(unionRect(x.items.map((e) => e.rect)).y - match.ymap(orect.y)) < Math.max(200, orect.h);
+    const sameMarkup = (x) => x.items.some((e) => sels.has(e.selector));
+    // same markup in the same spot: dynamic content; other markup in the same spot (a
+    // different card in a list): still one difference, not "missing" plus "extra"
+    // another item of the same list on both pages: the original item looks like items
+    // that were matched, and the migrated one looks like their migrated counterparts
+    const sameList = (x) => {
+      const xs = new Set(x.items.map((e) => e.selector));
+      return match.matched.some((p) => sels.has(p.o.selector) && xs.has(p.m.selector));
+    };
+    const eg = extraGroups.find((x) => !swapped.has(x) && sameMarkup(x) && near(x))
+      || extraGroups.find((x) => !swapped.has(x) && near(x) && sameList(x));
     if (!eg) return;
     swapped.add(mg);
     swapped.add(eg);
+    const dynamic = sameMarkup(eg);
+    // the item's title: a heading, else a link or text, else an image label
+    const lead = (g) => (g.items.find((e) => e.kind === 'heading')
+      || g.items.find((e) => e.kind !== 'image' && e.text && e.text.length > 12)
+      || g.items.find((e) => e.text) || g.items[0]).text;
     add({
       o: { rect: orect, selector: mg.items[0].selector, text: short(mg.items[0].text) },
       m: { rect: unionRect(eg.items.map((e) => e.rect)), selector: eg.items[0].selector, text: short(eg.items[0].text) },
       category: 'content',
       property: 'changed',
-      severity: 'low',
-      title: `Content differs in the same spot (${mg.items.length} vs ${eg.items.length} elements)`,
-      detail: `Original: “${short(mg.items[0].text, 40)}”. Migrated: “${short(eg.items[0].text, 40)}”. Same markup, different text: probably dynamic content (search results, feeds, random teasers).`,
+      severity: dynamic ? 'low' : 'medium',
+      title: dynamic
+        ? `Content differs in the same spot (${mg.items.length} vs ${eg.items.length} elements)`
+        : `Different content: “${short(lead(eg), 34)}” where the original has “${short(lead(mg), 34)}”`,
+      detail: dynamic
+        ? `Original: “${short(mg.items[0].text, 40)}”. Migrated: “${short(eg.items[0].text, 40)}”. Same markup, different text: probably dynamic content (search results, feeds, random teasers).`
+        : `Original: “${short(lead(mg), 60)}”. Migrated: “${short(lead(eg), 60)}”. The same spot shows a different item (e.g. another card in a list).`,
       ov: countOf(mg.items.length),
       mv: countOf(eg.items.length),
       fix: {
@@ -711,6 +762,25 @@ export function analyzeWidth({
       mv: `h${m.level}`,
       fix: {
         file: null, selector: null, decl: [], note: `Change the heading to h${o.level} in the content (or in the import parser).`,
+      },
+    });
+  });
+
+  // wording changed on a matched element (copy edits, typos, test text left in the content)
+  visiblePairs.filter(({ o, m, split, icon }) => !split && !icon && textual(o) && textual(m) && !o.labelOnly && !m.labelOnly
+    && textKey(o.text) !== textKey(m.text)).forEach(({ o, m }) => {
+    add({
+      o: ref(o),
+      m: ref(m),
+      category: 'content',
+      property: 'text',
+      severity: 'medium',
+      title: `Text differs: “${short(m.text, 40)}”, original “${short(o.text, 40)}”`,
+      detail: `Original: “${short(o.text, 120)}”. Migrated: “${short(m.text, 120)}”.`,
+      ov: short(o.text, 80),
+      mv: short(m.text, 80),
+      fix: {
+        file: null, selector: null, decl: [], note: 'Correct the text in the page content.',
       },
     });
   });
@@ -816,14 +886,19 @@ export function analyzeWidth({
         });
         return;
       }
+      const my = Math.round(match.ymap(o.rect.y));
+      const gate = consentNotes.find((n) => Math.abs(n.rect.y - my) < Math.max(400, o.rect.h));
       add({
         o: { rect: o.rect, selector: o.selector },
-        m: { rect: { x: o.rect.x, y: Math.round(match.ymap(o.rect.y)), w: o.rect.w, h: Math.min(o.rect.h, 120) }, selector: null, expected: true },
+        m: gate ? { rect: gate.rect, selector: gate.selector, text: short(gate.text) }
+          : { rect: { x: o.rect.x, y: my, w: o.rect.w, h: Math.min(o.rect.h, 120) }, selector: null, expected: true },
         category: 'content',
         property: 'embed',
         severity: 'high',
         title: `${provider} post missing on the migrated page`,
-        detail: `This ${provider} post isn't on the migrated page, as an embed or as a quote/link.`,
+        detail: gate
+          ? `The migrated page shows “${short(gate.text, 70)}” in its place: the ${provider} embed only loads after social-media cookies are accepted. The original shows it without consent.`
+          : `This ${provider} post isn't on the migrated page, as an embed or as a quote/link.`,
         ov: 'present',
         mv: 'not found',
         fix: {
@@ -893,7 +968,11 @@ export function analyzeWidth({
     });
   }
   const failedInOrig = new Set((orig.fonts || []).filter((f) => f.status === 'error').map((f) => f.family.toLowerCase()));
-  const failedFonts = (mig.fonts || []).filter((f) => f.status === 'error' && !failedInOrig.has(f.family.toLowerCase()));
+  // local()-only faces (EDS size-adjusted fallbacks) depend on the fonts of the machine
+  // running the check, not on the site: they are never a download failure
+  const localOnly = new Set(mig.localOnlyFonts || []);
+  const failedFonts = (mig.fonts || []).filter((f) => f.status === 'error' && !failedInOrig.has(f.family.toLowerCase())
+    && !localOnly.has(f.family.toLowerCase()) && !/-fallback$/i.test(f.family));
   if (failedFonts.length) {
     add({
       o: { rect: null, selector: null },
@@ -910,7 +989,10 @@ export function analyzeWidth({
       },
     });
   }
-  const broken = (mig.failedRequests || []).filter((r) => !/analytics|gtm|doubleclick|rum|hlx\.page\/.*\.json/.test(r.url));
+  // ERR_ABORTED is the browser cancelling a request itself (lazy images it no longer needs,
+  // an embed's carousel, a navigation): nothing is broken
+  const broken = (mig.failedRequests || []).filter((r) => !/analytics|gtm|doubleclick|rum|hlx\.page\/.*\.json/.test(r.url)
+    && !/ERR_ABORTED|NS_BINDING_ABORTED/.test(String(r.status)));
   if (broken.length) {
     add({
       o: { rect: null, selector: null },
