@@ -20,6 +20,13 @@ const pageMeta = (d) => ({
   consoleErrors: d.consoleErrors.slice(0, 5),
 });
 
+// one anchor per 40px of the original is plenty for scrolling, and keeps report.json small
+const thin = (anchors) => anchors.reduce((out, a, i) => {
+  const last = out[out.length - 1];
+  if (!last || a[0] - last[0] >= 40 || (i === anchors.length - 1 && a[0] > last[0])) out.push(a);
+  return out;
+}, []);
+
 /**
  * Runs a full comparison and writes reports/<id>/report.json plus screenshots.
  * `log(message, progress)` streams progress to the UI.
@@ -94,6 +101,7 @@ export async function runComparison(job, { reportsDir, repoRoot, log }) {
         issues: analysis.issues,
         regions: diff.regions,
         shots,
+        anchors: thin(match.anchors), // matched content positions [orig y, migrated y], for section-aligned scrolling
         page: { o: pageMeta(o.data), m: pageMeta(m.data) },
       });
       log(`${width}px · score ${analysis.score}, ${analysis.issues.length} issues`);

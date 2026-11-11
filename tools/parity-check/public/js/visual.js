@@ -16,6 +16,21 @@ const ICONS = {
 const MODES = [['side', 'Side by side'], ['strip', 'Breakpoints']];
 const SEV_RANK = { high: 3, medium: 2, low: 1 };
 
+/** Maps a y on one page to the other through matched content positions [[from, to], …]. */
+function mapY(pts, y) {
+  if (y <= pts[0][0]) return pts[0][1] - (pts[0][0] - y);
+  const last = pts[pts.length - 1];
+  if (y >= last[0]) return last[1] + (y - last[0]);
+  let lo = 0;
+  let hi = pts.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1; // eslint-disable-line no-bitwise
+    if (pts[mid][0] <= y) lo = mid; else hi = mid;
+  }
+  const [a, b] = [pts[lo], pts[hi]];
+  return b[0] === a[0] ? a[1] : a[1] + ((y - a[0]) / (b[0] - a[0])) * (b[1] - a[1]);
+}
+
 export function issueKey(i) {
   return [i.category, i.property, i.fix?.selector || i.m?.selector || i.o?.selector || '', i.title.replace(/\d+(\.\d+)?px/g, '#')].join('|');
 }
@@ -226,16 +241,28 @@ export class Viewer {
       this.root.querySelectorAll('.strip-shot img').forEach((img) => img.addEventListener('load', () => this.drawStripDots(img)));
       this.fitStrip();
     }
-    // proportional scroll sync (pages can differ in height); paused while jumping to an issue
+    // scroll sync by content: the section in the middle of one pane is brought to the
+    // middle of the other, even when sections above it differ in height. Reports without
+    // matched positions fall back to proportional sync. Paused while jumping to an issue.
     const scrollers = [...this.root.querySelectorAll('.scroller')];
     if (scrollers.length === 2) {
       let lock = false;
+      const anchors = this.result.anchors || [];
       scrollers.forEach((s, idx) => s.addEventListener('scroll', () => {
         if (lock || this.jumping) return;
         lock = true;
         const other = scrollers[1 - idx];
-        const ratio = s.scrollTop / Math.max(1, s.scrollHeight - s.clientHeight);
-        other.scrollTop = ratio * (other.scrollHeight - other.clientHeight);
+        const scaleOf = (sc) => { const img = sc.querySelector('img'); return img?.naturalWidth ? img.clientWidth / img.naturalWidth : 0; };
+        const from = scaleOf(s);
+        const to = scaleOf(other);
+        if (anchors.length >= 2 && from && to) {
+          const pts = idx === 0 ? anchors : anchors.map(([o, m]) => [m, o]).sort((a, b) => a[0] - b[0]);
+          const y = (s.scrollTop + s.clientHeight / 2) / from; // page y at the pane's middle
+          other.scrollTop = mapY(pts, y) * to - other.clientHeight / 2;
+        } else {
+          const ratio = s.scrollTop / Math.max(1, s.scrollHeight - s.clientHeight);
+          other.scrollTop = ratio * (other.scrollHeight - other.clientHeight);
+        }
         requestAnimationFrame(() => { lock = false; });
       }));
     }

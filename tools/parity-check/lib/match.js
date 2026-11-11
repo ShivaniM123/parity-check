@@ -2,6 +2,9 @@
  * Matches elements of the original page to elements of the migrated page.
  * Text elements are matched by content, then images/controls by position
  * using a vertical mapping learned from the matched text ("anchors").
+ * Positions are always predicted from matched content nearby (the element's own
+ * section), never from the page height alone: a section that moved down because
+ * something above it got taller is still the same section, not a missing one.
  */
 
 export const textKey = (s) => (s || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -73,6 +76,25 @@ function buildYMap(anchors, ratio) {
   };
 }
 
+/**
+ * Predicts where an original y lands on the migrated page from the nearest matched
+ * element above it (same offset), so sections that moved, even out of order, are found.
+ */
+function buildLocalMap(anchors, ymap, reach = 1500) {
+  const pts = [...anchors].sort((p, q) => p.o - q.o);
+  return (y) => {
+    let lo = 0;
+    let hi = pts.length - 1;
+    let k = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1; // eslint-disable-line no-bitwise
+      if (pts[mid].o <= y) { k = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (k < 0 || y - pts[k].o > reach) return ymap(y);
+    return pts[k].m + (y - pts[k].o);
+  };
+}
+
 export function matchElements(orig, mig, { origHeight, migHeight }) {
   const ratio = origHeight ? migHeight / origHeight : 1;
   const pairs = new Map(); // orig.i -> mig
@@ -100,10 +122,12 @@ export function matchElements(orig, mig, { origHeight, migHeight }) {
     .map(([oi, m]) => ({ o: orig[oi].rect.y, m: m.rect.y, ov: orig[oi].visible, mv: m.visible }))
     .filter((p) => p.ov && p.mv);
   let ymap = buildYMap(anchors, ratio);
+  let local = buildLocalMap(anchors, ymap);
+  // distance from where the element is expected: page-wide mapping or its own section
+  const offBy = (o, m) => Math.min(Math.abs(ymap(o.rect.y) - m.rect.y), Math.abs(local(o.rect.y) - m.rect.y));
 
   const score = (o, m, sim) => {
-    const predicted = ymap(o.rect.y);
-    const dy = Math.abs(predicted - m.rect.y);
+    const dy = offBy(o, m);
     const vis = o.visible === m.visible ? 0 : 0.3;
     const kind = o.kind === m.kind ? 0 : 0.1;
     return sim - Math.min(dy / 3000, 0.5) - vis - kind;
@@ -122,6 +146,7 @@ export function matchElements(orig, mig, { origHeight, migHeight }) {
     .map(([oi, m]) => ({ o: orig[oi].rect.y, m: m.rect.y, ov: orig[oi].visible, mv: m.visible }))
     .filter((p) => p.ov && p.mv);
   ymap = buildYMap(anchors, ratio);
+  local = buildLocalMap(anchors, ymap);
 
   // pass 3: fuzzy text (copy edits, whitespace, truncated text)
   const freeM = mText.filter((m) => !used.has(m.i));
@@ -150,8 +175,7 @@ export function matchElements(orig, mig, { origHeight, migHeight }) {
     const cand = [];
     oi.forEach((o) => {
       mi.forEach((m) => {
-        const predicted = ymap(o.rect.y);
-        const dy = Math.abs(predicted - m.rect.y);
+        const dy = offBy(o, m);
         if (dy > 1200) return;
         const ao = o.rect.w / Math.max(1, o.rect.h);
         const am = m.rect.w / Math.max(1, m.rect.h);
@@ -171,16 +195,49 @@ export function matchElements(orig, mig, { origHeight, migHeight }) {
     });
   });
 
+  // pass 5: whatever is still unmatched is looked for anywhere on the page before it
+  // counts as missing (a whole section can sit far lower on the migrated page)
+  oText.forEach((o) => {
+    if (pairs.has(o.i)) return;
+    const k = textKey(o.text);
+    if (k.length < 6) return;
+    let best = null;
+    let bestSim = 0.8;
+    mText.forEach((m) => {
+      if (used.has(m.i) || !compatible(o, m)) return;
+      const mk = textKey(m.text);
+      if (Math.abs(mk.length - k.length) > Math.max(k.length, mk.length) * 0.3) return;
+      const sim = dice(k, mk) - (o.visible === m.visible ? 0 : 0.3);
+      if (sim > bestSim || (best && sim === bestSim && offBy(o, m) < offBy(o, best))) { bestSim = sim; best = m; }
+    });
+    if (best) take(o, best);
+  });
+  ['image', 'control'].forEach((kind) => {
+    orig.filter((o) => o.kind === kind && o.visible && !pairs.has(o.i)).forEach((o) => {
+      const key = textKey(o.alt || (kind === 'control' ? o.text : ''));
+      if (!key) return;
+      const cands = mig.filter((m) => m.kind === kind && m.visible && !used.has(m.i)
+        && textKey(m.alt || (kind === 'control' ? m.text : '')) === key);
+      if (!cands.length) return;
+      cands.sort((p, q) => offBy(o, p) - offBy(o, q));
+      take(o, cands[0]);
+    });
+  });
+
   const matched = [...pairs.entries()].map(([oi, m]) => ({ o: orig[oi], m }));
   // pairs that keep their vertical order on both pages; shuffled ones (random teasers,
   // search results, carousels) are left out of spacing and layout comparisons
-  const ordered = new Set(monotone(matched
+  const inOrder = monotone(matched
     .filter((p) => p.o.visible && p.m.visible)
-    .map((p) => ({ o: p.o.rect.y, m: p.m.rect.y, i: p.o.i }))).map((p) => p.i));
+    .map((p) => ({ o: p.o.rect.y, m: p.m.rect.y, i: p.o.i })));
+  const ordered = new Set(inOrder.map((p) => p.i));
   matched.forEach((p) => { p.inOrder = ordered.has(p.o.i); });
   const missing = orig.filter((o) => o.visible && !pairs.has(o.i));
   const extra = mig.filter((m) => m.visible && !used.has(m.i));
+  // final mapping from everything matched: places "missing" markers where the content
+  // would be, and lets the viewer scroll both pages section by section
+  ymap = buildYMap(inOrder, ratio);
   return {
-    matched, missing, extra, ymap,
+    matched, missing, extra, ymap, anchors: inOrder.map((p) => [Math.round(p.o), Math.round(p.m)]),
   };
 }
