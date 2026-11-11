@@ -361,7 +361,7 @@ const HELP = `<p>I compare an original page with its migrated page at the <b>ori
   <li><code>issue #3 at 375</code> · <code>show all fixes</code> · <code>fixes for cards</code></li>
   <li><code>prompt for AEM Coder</code>: copy a prompt with every open issue and paste it into AEM Coder</li>
   <li><code>download the PDF report</code> · <code>breakpoints</code> · <code>re-run</code> · <code>history</code></li></ul>
-  <p>Switch on <b>Visual parity</b> (top right) to see both pages side by side with every issue marked.</p>`;
+  <p>Click <b>Visual parity</b> (top right) to see both pages side by side with every issue marked, and <b>Chat</b> to come back.</p>`;
 
 async function bodyFor(msg) {
   const d = msg.data;
@@ -685,15 +685,17 @@ async function submitForm(msg) {
 async function renderVisual(focus = {}) {
   const panel = root.querySelector('.visual-col');
   root.classList.toggle('with-visual', state.visual);
-  const toggle = document.getElementById('visual-toggle');
-  if (toggle) toggle.checked = state.visual;
+  document.querySelectorAll('#topbar-actions [data-view]').forEach((b) => {
+    const on = (b.dataset.view === 'visual') === !!state.visual;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
   workspace?.destroy();
   workspace = null;
   if (!state.visual) { panel.innerHTML = ''; return; }
   if (!state.reportId) {
     panel.innerHTML = `<div class="visual-empty card"><h2>Visual parity</h2>
-      <p class="muted">No comparison yet. Run one in the chat and both pages appear here side by side, with every issue marked.</p>
-      <button type="button" class="btn primary" data-action="close-visual">← Back to chat</button></div>`;
+      <p class="muted">No comparison yet. Go to <b>Chat</b>, run one, and both pages appear here side by side, with every issue marked.</p></div>`;
     return;
   }
   let report;
@@ -712,8 +714,6 @@ async function renderVisual(focus = {}) {
         <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>
       <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
         <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
-      <button type="button" class="btn tiny" data-action="download" data-format="pdf" data-report="${esc(report.id)}">PDF</button>
-      <button type="button" class="btn tiny back-chat" data-action="close-visual" title="Hide visual parity and return to the chat">← Back to chat</button>
     </div>
     <div class="visual-body"></div>`;
   panel.querySelectorAll('[data-vwidth]').forEach((b) => b.addEventListener('click', () => renderVisual({ width: Number(b.dataset.vwidth) })));
@@ -1059,7 +1059,6 @@ function onAction(e) {
     const width = Number(el.dataset.id.split('-')[0]);
     setVisual(true, { width, issueId: el.dataset.id });
   }
-  if (action === 'close-visual') setVisual(false);
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
@@ -1071,8 +1070,13 @@ export function mountChat(app, params) {
   load();
   // chat controls live in the top bar, next to Chat / History
   const actions = document.getElementById('topbar-actions');
-  actions.innerHTML = `<label class="switch" title="Show both pages side by side with issues marked">
-      <input type="checkbox" id="visual-toggle"><span class="track"><span class="thumb"></span></span><span>Visual parity</span></label>`;
+  // the two views of a comparison, as one switch: it always shows where you are and the way back
+  actions.innerHTML = `<div class="view-switch" role="group" aria-label="View">
+      <button type="button" data-view="chat" title="The conversation and the comparison summary">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>Chat</button>
+      <button type="button" data-view="visual" title="Both pages side by side with every issue marked">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1"/><rect x="9" y="3" width="5.5" height="10" rx="1"/></svg>Visual parity</button>
+    </div>`;
   app.innerHTML = `<div class="chat-app">
     <section class="chat-col">
       <div class="messages" aria-live="polite"></div>
@@ -1092,7 +1096,10 @@ export function mountChat(app, params) {
   </div>`;
   root = app.querySelector('.chat-app');
   root.addEventListener('click', onAction);
-  actions.querySelector('#visual-toggle').addEventListener('change', (e) => setVisual(e.target.checked));
+  actions.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    const on = b.dataset.view === 'visual';
+    if (on !== !!state.visual) setVisual(on);
+  }));
   root.addEventListener('keydown', (e) => {
     const el = e.target;
     if (el.matches('.bp-add-input') && e.key === 'Enter') {

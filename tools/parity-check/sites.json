@@ -13,5 +13,35 @@
       "#usercentrics-root"
     ],
     "updated": "2026-11-10T08:36:10.335Z"
+  },
+  "127.0.0.1:4313": {
+    "breakpoints": [
+      640,
+      1024
+    ],
+    "extraWidths": [],
+    "hideSelectors": [
+      "#onetrust-consent-sdk",
+      "#onetrust-banner-sdk",
+      ".cookie-banner",
+      "[id*=\"cookie\" i][class*=\"banner\" i]",
+      "#usercentrics-root"
+    ],
+    "updated": "2026-11-11T11:12:17.436Z"
+  },
+  "127.0.0.1:4314": {
+    "breakpoints": [
+      640,
+      1024
+    ],
+    "extraWidths": [],
+    "hideSelectors": [
+      "#onetrust-consent-sdk",
+      "#onetrust-banner-sdk",
+      ".cookie-banner",
+      "[id*=\"cookie\" i][class*=\"banner\" i]",
+      "#usercentrics-root"
+    ],
+    "updated": "2026-11-11T11:21:04.800Z"
   }
 }

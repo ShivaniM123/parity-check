@@ -40,7 +40,7 @@ Breakpoints and ignored elements are remembered per site.
 ## Use the results
 
 - **Comparison summary** (right panel): score, High / Medium / Low counts, top issues, and quick actions.
-- **Visual parity** (top bar): both pages side by side with each issue pinned and highlighted. The panes scroll together section by section.
+- **Chat | Visual parity** (top bar): switch between the conversation and both pages side by side, with each issue pinned and highlighted. The panes scroll together section by section.
 - **Review:** mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Use `←` `→` to move between issues.
 - **Copy for AEM Coder:** copies a ready prompt with every open issue (element, original and migrated values, widths). Paste it into AEM Coder; approved issues are left out.
 - **Download report:** a PDF with every issue, close-ups and suggested CSS.
