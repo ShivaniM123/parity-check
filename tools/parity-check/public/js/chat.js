@@ -13,7 +13,7 @@ const DEFAULT_HIDE = ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '.cookie-
 const URL_RE = /\b(?:https?:\/\/|localhost:\d+)[^\s,<>"')]+/gi;
 
 const state = {
-  messages: [], reportId: null, visual: false, visualWidth: null, pending: {},
+  messages: [], reportId: null, batchId: null, visual: false, visualWidth: null, pending: {},
 };
 let root;
 let workspace;
@@ -23,16 +23,18 @@ function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || '{}');
     Object.assign(state, {
-      messages: saved.messages || [], reportId: saved.reportId || null, visual: !!saved.visual, visualWidth: saved.visualWidth || null,
+      messages: saved.messages || [], reportId: saved.reportId || null, batchId: saved.batchId || null, visual: !!saved.visual, visualWidth: saved.visualWidth || null,
     });
     seq = state.messages.reduce((m, x) => Math.max(m, x.id), 0);
   } catch (e) { /* fresh start */ }
 }
 
 function save() {
-  const { messages, reportId, visual, visualWidth } = state;
+  const {
+    messages, reportId, batchId, visual, visualWidth,
+  } = state;
   localStorage.setItem(STORE, JSON.stringify({
-    messages: messages.slice(-150), reportId, visual, visualWidth,
+    messages: messages.slice(-150), reportId, batchId, visual, visualWidth,
   }));
 }
 
@@ -92,14 +94,14 @@ function bpBlockHtml(d, id) {
     <legend>Breakpoints</legend>
     <div class="bp-chips" aria-live="polite">
       ${bps.length ? bps.map((b) => `<span class="bp-chip">${b}px<button type="button" data-action="form-bp-remove" data-mid="${id}" data-px="${b}" aria-label="Remove ${b}px">×</button></span>`).join('')
-    : '<span class="bp-empty">None yet. Leave empty to detect them from the original when you run.</span>'}
+    : `<span class="bp-empty">None yet. ${d.mode === 'many' ? 'Leave empty to use the breakpoints saved for each site, or detect them from its first page.' : 'Leave empty to detect them from the original when you run.'}</span>`}
       ${bps.length > 1 ? `<button type="button" class="btn link bp-clear" data-action="form-bp-clear" data-mid="${id}">Clear all</button>` : ''}
     </div>
     <div class="bp-add">
       <input type="number" class="bp-add-input" min="280" max="3840" step="1" placeholder="e.g. 768" aria-label="Breakpoint in px" data-mid="${id}">
       <span class="bp-unit">px</span>
       <button type="button" class="btn secondary" data-action="form-bp-add" data-mid="${id}">+ Add breakpoint</button>
-      <button type="button" class="btn ghost" data-action="form-detect" data-mid="${id}">Detect from original</button>
+      <button type="button" class="btn ghost" data-action="form-detect" data-mid="${id}">${d.mode === 'many' ? 'Detect from first page' : 'Detect from original'}</button>
     </div>
     ${d.bpError ? `<p class="err bp-err">${esc(d.bpError)}</p>` : ''}
     <div class="bp-presets"><span class="muted">Common:</span>
@@ -107,6 +109,103 @@ function bpBlockHtml(d, id) {
     </div>
     ${d.note && (bps.length || d.noteEmpty) ? `<p class="f-note">${esc(d.note)}</p>` : ''}
   </fieldset>`;
+}
+
+/* ------------------------------------------------------------ page lists (several pages) */
+
+const MAX_PAGES = 100;
+
+/** A token from a pasted list or CSV cell that is a page URL, or null. */
+function listUrl(token) {
+  const t = token.replace(/^["'<(]+|["'>),.;]+$/g, '');
+  if (!/^(https?:\/\/|localhost[:/]|127\.0\.0\.1)/i.test(t) && !/^[\w-]+(\.[\w-]+)+(:\d+)?\//.test(t)) return null;
+  const u = normalizeUrl(t); // eslint-disable-line no-use-before-define
+  return isPageUrl(u) ? u : null; // eslint-disable-line no-use-before-define
+}
+
+/**
+ * The migrated URL for an original when only the migrated site is given: the
+ * same path, without ".html" (Edge Delivery serves pages without it).
+ */
+function mapToSite(original, site) {
+  try {
+    const o = new URL(original);
+    const s = new URL(normalizeUrl(site)); // eslint-disable-line no-use-before-define
+    const path = o.pathname.replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '');
+    return `${s.origin}${path}${o.search}`;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Reads a list of pages: one pair per line ("original migrated", separated by
+ * spaces, tabs, commas or an arrow, as pasted from a spreadsheet or CSV).
+ * A line with only the original URL uses the migrated site. Lines without a
+ * URL (headings, notes) are skipped.
+ */
+function parseList(text, site) {
+  const pairs = [];
+  const problems = [];
+  const seen = new Set();
+  const siteOk = isPageUrl(normalizeUrl(site)); // eslint-disable-line no-use-before-define
+  let single = 0;
+  String(text || '').split(/\r?\n/).forEach((raw, i) => {
+    const urls = raw.split(/[\s,;|]+|->|→|=>/).map(listUrl).filter(Boolean);
+    if (!urls.length) return;
+    // several pairs on one line (e.g. pasted as one row): take them two by two
+    for (let k = 0; k < urls.length; k += 2) {
+      const original = urls[k];
+      let migrated = urls[k + 1];
+      if (!migrated) {
+        single += 1;
+        if (!siteOk) { problems.push({ line: i + 1, text: 'only one URL' }); return; }
+        migrated = mapToSite(original, site);
+      }
+      if (original === migrated) { problems.push({ line: i + 1, text: 'both URLs are the same' }); return; }
+      const key = `${original} ${migrated}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        pairs.push({ original, migrated, mapped: !urls[k + 1] });
+      }
+    }
+  });
+  return { pairs, problems, single };
+}
+
+const pathLabel = (u) => {
+  try {
+    const x = new URL(u);
+    return `${x.pathname}${x.search}` || '/';
+  } catch (e) { return u; }
+};
+
+/** The live line under the page list: how many pages are ready, and what's wrong. */
+function listStatusHtml(d) {
+  const { pairs, problems, single } = parseList(d.list, d.migratedSite);
+  const parts = [];
+  if (pairs.length) parts.push(`<b>${pairs.length}</b> page${pairs.length === 1 ? '' : 's'} ready`);
+  if (pairs.length > MAX_PAGES) parts.push(`<span class="txt-high">up to ${MAX_PAGES} per run</span>`);
+  if (problems.length) {
+    const lines = problems.slice(0, 4).map((p) => p.line).join(', ');
+    const onlyOne = problems.every((p) => p.text === 'only one URL');
+    parts.push(`<span class="txt-high">line${problems.length > 1 ? 's' : ''} ${lines}${problems.length > 4 ? '…' : ''}: ${onlyOne ? 'only one URL. Add the migrated site below, or the migrated URL on the line' : problems[0].text}</span>`);
+  }
+  const mapped = pairs.find((p) => p.mapped);
+  if (mapped) parts.push(`e.g. ${esc(pathLabel(mapped.original))} → ${esc(mapped.migrated)}`);
+  if (!parts.length) parts.push(String(d.list || '').trim() ? 'No page URLs found yet.' : '');
+  return { html: parts.join(' · '), needSite: single > 0 || !!d.migratedSite };
+}
+
+/** Updates the page count and the "Migrated site" field while typing, without redrawing the form. */
+function refreshListStatus(msg, card) {
+  const ls = listStatusHtml(msg.data);
+  card.querySelector('.list-status').innerHTML = ls.html;
+  card.querySelector('.site-row').hidden = !ls.needSite;
+  if (msg.data.error) { // the list was edited: an old error no longer applies
+    msg.data.error = '';
+    card.querySelector(':scope > .err')?.remove();
+  }
 }
 
 /** Structured "new comparison" form, as a chat card. */
@@ -117,20 +216,38 @@ function formHtml(msg) {
       <p class="muted">${numList(d.breakpoints).length ? `Testing your breakpoints <b>${formWidths(d).join(', ')}px</b>` : 'Testing the breakpoints detected from the original'}</p></div>`;
   }
   const { id } = msg;
-  return `<form class="card-msg form-msg" data-mid="${id}" novalidate>
-    <h3>New comparison</h3>
+  const many = d.mode === 'many';
+  const ls = listStatusHtml(d);
+  const pagesHtml = many ? `
+    <div class="f"><span class="f-title">Pages <span class="muted">one per line: original URL, then migrated URL</span></span>
+      <textarea name="list" class="page-list" rows="6" spellcheck="false" data-mid="${id}" placeholder="https://www.example.com/about   https://main--site--org.aem.page/about&#10;https://www.example.com/contact   https://main--site--org.aem.page/contact&#10;&#10;Paste from a spreadsheet, or drop a CSV or text file here.">${esc(d.list)}</textarea>
+      <div class="list-bar">
+        <button type="button" class="btn link" data-action="form-attach" data-mid="${id}">Attach list (.csv, .txt)</button>
+        <input type="file" class="list-file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden data-mid="${id}">
+        <span class="list-status" aria-live="polite">${ls.html}</span>
+      </div></div>
+    <label class="f site-row" ${ls.needSite ? '' : 'hidden'}><span class="lbl m">Migrated site</span>
+      <input type="url" name="migratedSite" autocomplete="off" placeholder="https://main--site--org.aem.page" value="${esc(d.migratedSite)}">
+      <span class="f-note">For lines with only the original URL: the same path on this site.</span></label>` : `
     <label class="f"><span class="lbl o">Original page</span>
       <input type="url" name="original" required list="recent-original" autocomplete="off" placeholder="https://www.example.com/products/widget" value="${esc(d.original)}">
       <span class="f-err" aria-live="polite"></span></label>
     <label class="f"><span class="lbl m">Migrated page</span>
       <input type="url" name="migrated" required list="recent-migrated" autocomplete="off" placeholder="https://main--site--org.aem.page/products/widget" value="${esc(d.migrated)}">
-      <span class="f-err" aria-live="polite"></span></label>
+      <span class="f-err" aria-live="polite"></span></label>`;
+  return `<form class="card-msg form-msg" data-mid="${id}" novalidate>
+    <div class="form-head"><h3>New comparison</h3>
+      <div class="view-switch mode-switch" role="group" aria-label="Pages to compare">
+        <button type="button" class="${many ? '' : 'on'}" aria-pressed="${!many}" data-action="form-mode" data-mode="one" data-mid="${id}">One page</button>
+        <button type="button" class="${many ? 'on' : ''}" aria-pressed="${many}" data-action="form-mode" data-mode="many" data-mid="${id}">Several pages</button>
+      </div></div>
+    ${pagesHtml}
     ${bpBlockHtml(d, id)}
     <details class="f-more" ${d.ignore ? 'open' : ''}><summary>Ignore elements <span class="muted">optional: chat widgets, ads, live feeds</span></summary>
       <textarea name="ignore" rows="2" placeholder=".chat-widget&#10;#promo-banner">${esc(d.ignore)}</textarea></details>
     ${d.error ? `<p class="err">${esc(d.error)}</p>` : ''}
     <div class="actions">
-      <button type="submit" class="btn primary">Run comparison</button>
+      <button type="submit" class="btn primary">${many ? 'Run comparisons' : 'Run comparison'}</button>
       <button type="button" class="btn link" data-action="form-demo" data-mid="${id}">Use the demo pages</button>
     </div>
   </form>`;
@@ -167,6 +284,231 @@ function progressHtml(msg) {
     <div class="progress"><span style="width:${done ? 100 : d.progress || 2}%"></span></div>
     ${steps ? `<ol class="steps">${steps}</ol>` : `<p class="status busy">${spinner}${esc(d.last || 'Starting…')}</p>`}
   </div>`;
+}
+
+/* ------------------------------------------------------------ batch card (several pages) */
+
+const ITEM_FINAL = new Set(['done', 'error', 'cancelled', 'lost']);
+const batchMsg = () => state.messages.find((m) => m.type === 'batch' && m.id === state.batchId);
+const fmtTime = (secs) => (secs < 60 ? `${secs}s` : `${Math.round(secs / 60)} min`);
+
+/** Page labels: just the path when every original is on the same site. */
+function itemLabel(items, it) {
+  const oneHost = new Set(items.map((x) => hostOf(x.original))).size === 1;
+  return oneHost ? pathLabel(it.original) : `${hostOf(it.original)}${pathLabel(it.original)}`;
+}
+
+function batchRowMeta(it) {
+  const s = it.summary;
+  if (it.status === 'done' && s) {
+    return `<span class="score-pill sm ${scoreClass(s.score)}">${s.score}</span>${s.high ? `<span class="tc high" title="${s.high} high">${s.high}</span>` : ''}<span class="br-count">${s.issues} issue${s.issues === 1 ? '' : 's'}</span>`;
+  }
+  if (it.status === 'running') return `${spinner}<span class="br-count">${(it.doneW || []).length} of ${it.widths?.length || '?'} widths</span>`;
+  if (it.status === 'error') return `<span class="txt-high br-err" title="${esc(it.error)}">${esc(it.error || 'failed')}</span>`;
+  return `<span class="br-count">${{
+    queued: 'waiting', waiting: 'waiting', cancelled: 'stopped', lost: 'interrupted',
+  }[it.status] || ''}</span>`;
+}
+
+function batchHtml(msg) {
+  const d = msg.data;
+  const { items } = d;
+  if (d.status === 'preparing') {
+    return `<div class="card-msg"><p class="status busy">${spinner}${esc(d.note || `Preparing ${items.length} pages…`)}</p></div>`;
+  }
+  if (d.status === 'error') return `<div class="card-msg"><p class="err">${esc(d.error)}</p></div>`;
+  const n = items.length;
+  const fin = items.filter((it) => ITEM_FINAL.has(it.status)).length;
+  const ok = items.filter((it) => it.status === 'done' && it.summary);
+  const running = d.status === 'running';
+  const queued = items.filter((it) => it.status === 'queued').length;
+  // progress: finished widths over all widths
+  const part = items.reduce((sum, it) => sum + (ITEM_FINAL.has(it.status) ? 1 : (it.doneW || []).length / (it.widths?.length || 1)), 0);
+  let sub = '';
+  if (running) {
+    const doneJobs = items.filter((it) => it.status === 'done').length;
+    const left = doneJobs ? Math.round((((Date.now() - d.started) / doneJobs) * (n - fin)) / 1000) : 0;
+    sub = `${fin} of ${n} done${left > 5 ? ` · about ${fmtTime(left)} left` : ''}`;
+  } else if (ok.length) {
+    const avg = Math.round(ok.reduce((sum, it) => sum + it.summary.score, 0) / ok.length);
+    const high = ok.reduce((sum, it) => sum + it.summary.high, 0);
+    const secs = d.ended && d.started ? Math.round((d.ended - d.started) / 1000) : 0;
+    sub = `average score <b>${avg}</b> · <b class="txt-high">${high}</b> high${secs ? ` · ${fmtTime(secs)}` : ''}`;
+  }
+  let title = `${ok.length} of ${n} pages compared`;
+  if (running) title = `Comparing ${n} pages…`;
+  else if (ok.length === n) title = `${n} pages compared`;
+  return `<div class="card-msg batch-msg">
+    <div class="progress-top"><b>${title}</b><span class="muted">${sub}</span></div>
+    ${running ? `<div class="progress"><span style="width:${Math.max(2, Math.round((part / n) * 100))}%"></span></div>` : ''}
+    <ol class="batch-list">${items.map((it, i) => `<li><button type="button" class="brow st-${it.status} ${d.selected && d.selected === it.jobId ? 'on' : ''}" data-action="batch-open" data-mid="${msg.id}" data-i="${i}"
+        title="${esc(it.original)} → ${esc(it.migrated)}" ${it.status === 'done' ? '' : 'aria-disabled="true"'}>
+        <span class="br-n">${i + 1}</span><span class="br-path">${esc(itemLabel(items, it))}</span><span class="br-meta">${batchRowMeta(it)}</span></button></li>`).join('')}</ol>
+    <div class="actions">
+      ${ok.length ? `<button type="button" class="btn ${running ? 'secondary' : 'primary'}" data-action="send-coder" data-batch="${msg.id}" title="One prompt with the open issues of every finished page">Copy ${ok.length > 1 ? `all ${ok.length} pages` : ''} for AEM Coder</button>` : ''}
+      ${running && queued ? `<button type="button" class="btn ghost" data-action="batch-stop" data-mid="${msg.id}">Stop after this page</button>` : ''}
+      ${ok.length ? '<span class="muted br-hint">Click a page to see its issues.</span>' : ''}
+    </div></div>`;
+}
+
+/** Shows one page of a batch: the right panel (or a summary card on small screens) and Visual parity. */
+function openBatchItem(msg, it, { announce = true, width = null } = {}) {
+  if (!it || it.status !== 'done') return;
+  msg.data.selected = it.jobId;
+  state.reportId = it.jobId;
+  state.batchId = msg.id;
+  state.visualWidth = width; // a width the page wasn't tested at falls back to its first
+  update(msg);
+  renderResult(true); // eslint-disable-line no-use-before-define
+  const panelHidden = !root.querySelector('.side-result')?.offsetParent;
+  if (announce && panelHidden && !state.visual) add('bot', 'summary', { reportId: it.jobId });
+  if (state.visual) renderVisual(); // eslint-disable-line no-use-before-define
+}
+
+function finishBatch(msg) {
+  const d = msg.data;
+  if (d.status !== 'running') return;
+  d.items.forEach((it) => { if (!ITEM_FINAL.has(it.status)) it.status = 'lost'; });
+  d.status = 'done';
+  d.ended = Date.now();
+  const ok = d.items.filter((it) => it.status === 'done').length;
+  update(msg);
+  setTitle(`✓ ${ok} of ${d.items.length} pages compared`);
+  if (document.hasFocus()) setTimeout(() => setTitle(''), 4000);
+  refreshRecent(); // eslint-disable-line no-use-before-define
+}
+
+function watchBatch(msg) {
+  const d = msg.data;
+  const ids = d.items.filter((it) => it.jobId && !ITEM_FINAL.has(it.status)).map((it) => it.jobId);
+  if (!ids.length) { finishBatch(msg); return; }
+  const byId = new Map(d.items.map((it) => [it.jobId, it]));
+  const es = new EventSource(`/api/jobs/events?ids=${ids.join(',')}`);
+  let timer;
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.type === 'end') {
+      es.close();
+      clearTimeout(timer);
+      finishBatch(msg);
+      return;
+    }
+    const it = byId.get(e.jobId);
+    if (!it) return;
+    if (e.type === 'log' && !ITEM_FINAL.has(it.status)) {
+      it.status = 'running';
+      const result = e.message.match(/^(\d+)px · score (\d+)/);
+      if (result) it.doneW = [...new Set([...(it.doneW || []), Number(result[1])])];
+    }
+    if (e.type === 'status') {
+      Object.assign(it, { status: e.status, error: e.error, summary: e.summary || it.summary });
+      // the first finished page opens in the summary panel, so reviewing can start while the rest runs
+      if (e.status === 'done' && !d.selected && state.batchId === msg.id) openBatchItem(msg, it, { announce: false });
+      // the summary panel's page arrows count the finished pages
+      else if (e.status === 'done' && state.batchId === msg.id && d.selected === state.reportId) renderResult(true); // eslint-disable-line no-use-before-define
+    }
+    const fin = d.items.filter((x) => ITEM_FINAL.has(x.status)).length;
+    setTitle(`(${fin}/${d.items.length}) Comparing…`);
+    clearTimeout(timer);
+    timer = setTimeout(() => update(msg), 120);
+  };
+  es.onerror = () => {
+    es.close();
+    clearTimeout(timer);
+    finishBatch(msg);
+  };
+}
+
+/** Breakpoints and ignored elements for each site in the list: yours, else saved, else detected. */
+async function siteSettings(pairs, breakpoints, ignore, note) {
+  const sites = await api('/api/sites').catch(() => ({}));
+  const out = new Map();
+  // eslint-disable-next-line no-restricted-syntax
+  for (const p of pairs) {
+    const host = hostOf(p.original);
+    if (!out.has(host)) {
+      const saved = sites[host];
+      const custom = (saved?.hideSelectors || []).filter((s) => !DEFAULT_HIDE.includes(s));
+      const entry = { hide: [...new Set([...DEFAULT_HIDE, ...ignore, ...custom])], breakpoints };
+      if (!breakpoints.length && saved?.breakpoints?.length) entry.breakpoints = saved.breakpoints;
+      else if (!breakpoints.length) {
+        note(`Reading the breakpoints of ${host}…`);
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          entry.breakpoints = (await api('/api/breakpoints', { url: p.original })).suggested;
+          if (!entry.breakpoints.length) entry.error = `No breakpoints found on ${host}. Add them in the form.`;
+        } catch (e) {
+          entry.error = `Couldn't read ${host}: ${e.message}`;
+        }
+      }
+      out.set(host, entry);
+    }
+  }
+  return out;
+}
+
+async function submitBatch(msg) {
+  const d = msg.data;
+  const { pairs, problems } = parseList(d.list, d.migratedSite);
+  const fail = (text) => {
+    d.error = text;
+    update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] .page-list`)?.focus());
+  };
+  if (problems.length) {
+    const p = problems[0];
+    fail(problems.every((x) => x.text === 'only one URL')
+      ? `Line${problems.length > 1 ? 's' : ''} ${problems.map((x) => x.line).join(', ')} only ${problems.length > 1 ? 'have' : 'has'} one URL. Add the migrated site, or the migrated URL on each line.`
+      : `Line ${p.line}: ${p.text}.`);
+    return;
+  }
+  if (!pairs.length) { fail('Add at least one page: the original URL and the migrated URL on one line.'); return; }
+  if (pairs.length > MAX_PAGES) { fail(`That's ${pairs.length} pages. Up to ${MAX_PAGES} per run: split the list.`); return; }
+  if (pairs.length === 1) {
+    // one page: the normal comparison
+    Object.assign(d, { original: pairs[0].original, migrated: pairs[0].migrated });
+    submitForm(msg); // eslint-disable-line no-use-before-define
+    return;
+  }
+  const pending = Number(root.querySelector(`.form-msg[data-mid="${msg.id}"] .bp-add-input`)?.value);
+  const breakpoints = numList([...numList(d.breakpoints), pending].join(','));
+  const ignore = String(d.ignore || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  state.messages = state.messages.filter((m) => m !== msg);
+  root.querySelector(`.msg[data-mid="${msg.id}"]`)?.remove();
+  add('user', 'text', { text: `Compare ${pairs.length} pages${breakpoints.length ? `, breakpoints ${breakpoints.join(', ')}` : ''}` });
+  state.pending = {};
+  const batch = add('bot', 'batch', {
+    status: 'preparing', items: pairs.map((p) => ({ original: p.original, migrated: p.migrated, status: 'waiting' })),
+  });
+  state.batchId = batch.id;
+  const b = batch.data;
+  try {
+    const settings = await siteSettings(pairs, breakpoints, ignore, (note) => { b.note = note; update(batch); });
+    const runnable = b.items.filter((it) => {
+      const s = settings.get(hostOf(it.original));
+      if (s.error) Object.assign(it, { status: 'error', error: s.error });
+      return !s.error;
+    });
+    if (!runnable.length) throw new Error(settings.values().next().value.error);
+    const { jobs } = await api('/api/batches', {
+      pairs: runnable.map((it) => {
+        const s = settings.get(hostOf(it.original));
+        return {
+          original: it.original, migrated: it.migrated, breakpoints: s.breakpoints, options: { hideSelectors: s.hide },
+        };
+      }),
+    });
+    runnable.forEach((it, i) => Object.assign(it, { jobId: jobs[i].id, widths: jobs[i].widths, status: 'queued' }));
+    // remember each site's breakpoints for next time, as a single comparison does
+    settings.forEach((s, host) => {
+      if (!s.error && s.breakpoints.length) api('/api/sites', { host, breakpoints: s.breakpoints, hideSelectors: s.hide }).catch(() => {});
+    });
+    Object.assign(b, { status: 'running', started: Date.now() });
+    update(batch);
+    watchBatch(batch);
+  } catch (e) {
+    Object.assign(b, { status: 'error', error: `The comparisons couldn't start: ${e.message}` });
+    update(batch);
+  }
 }
 
 /* tab title shows progress, so the comparison can run in the background */
@@ -298,8 +640,11 @@ function fixesHtml(report, file) {
       <pre>${esc(f.css)}</pre></div>`).join('')}</div>`;
 }
 
-const fixPrompt = async (id) => {
-  const res = await fetch(`/api/reports/${id}/fix-prompt`);
+/** The AEM Coder prompt for one report, or one prompt for several (a batch). */
+const fixPrompt = async (ids) => {
+  const res = Array.isArray(ids)
+    ? await fetch('/api/fix-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
+    : await fetch(`/api/reports/${ids}/fix-prompt`);
   if (!res.ok) throw new Error('Could not build the prompt');
   return res.text();
 };
@@ -310,7 +655,7 @@ const fixPrompt = async (id) => {
  * clipboard write starts inside the click, with the prompt still loading, so
  * the browser keeps treating it as a user action.
  */
-async function sendToCoder(reportId, btn) {
+async function sendToCoder(reportId, btn, pages = 1) {
   const old = btn.innerHTML; // tiles have an icon: put it back afterwards
   btn.disabled = true;
   btn.textContent = 'Copying…';
@@ -323,7 +668,7 @@ async function sendToCoder(reportId, btn) {
     }
     const n = ((await text).match(/^- \[/gm) || []).length;
     btn.textContent = 'Copied ✓';
-    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'}, each with the element, the original and migrated values and the widths. No suggested fixes: AEM Coder works out the fix from its code. Approved differences are left out.</p>`);
+    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'}${pages > 1 ? ` across ${pages} pages (differences that look the same on several pages are listed once)` : ''}, each with the element, the original and migrated values and the widths. No suggested fixes: AEM Coder works out the fix from its code. Approved differences are left out.</p>`);
   } catch (err) {
     btn.innerHTML = old;
     say(`<p class="err">Couldn't copy: ${esc(err.message)}. Type <code>prompt for AEM Coder</code> to copy it from the preview.</p>`);
@@ -370,6 +715,7 @@ async function bodyFor(msg) {
     case 'setup': return setupHtml(msg);
     case 'form': return formHtml(msg);
     case 'progress': return progressHtml(msg);
+    case 'batch': return batchHtml(msg);
     case 'summary': return summaryHtml(await loadReport(d.reportId));
     case 'issues': return issuesHtml(await loadReport(d.reportId), d.filter);
     case 'issue': {
@@ -706,17 +1052,26 @@ async function renderVisual(focus = {}) {
     return;
   }
   const width = focus.width || state.visualWidth || report.results[0].width;
-  state.visualWidth = width;
-  save();
   const result = report.results.find((r) => r.width === width) || report.results[0];
+  state.visualWidth = result.width;
+  save();
+  const b = batchMsg();
+  const done = (b?.data.items || []).filter((it) => it.status === 'done' && it.summary);
+  const inBatch = done.some((it) => it.jobId === report.id);
   panel.innerHTML = `<div class="visual-head">
-      <div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
-        <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>
+      ${inBatch ? `<label class="vh-page" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
+        <select aria-label="Page">${done.map((it) => `<option value="${esc(it.jobId)}" ${it.jobId === report.id ? 'selected' : ''}>${b.data.items.indexOf(it) + 1}. ${esc(itemLabel(b.data.items, it))} · ${it.summary.score}</option>`).join('')}</select></label>`
+    : `<div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
+        <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>`}
       <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
         <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
     </div>
     <div class="visual-body"></div>`;
-  panel.querySelectorAll('[data-vwidth]').forEach((b) => b.addEventListener('click', () => renderVisual({ width: Number(b.dataset.vwidth) })));
+  panel.querySelectorAll('[data-vwidth]').forEach((x) => x.addEventListener('click', () => renderVisual({ width: Number(x.dataset.vwidth) })));
+  panel.querySelector('.vh-page select')?.addEventListener('change', (e) => {
+    // stay at the same width on the next page
+    openBatchItem(b, done.find((it) => it.jobId === e.target.value), { announce: false, width: state.visualWidth });
+  });
   workspace = mountWorkspace(panel.querySelector('.visual-body'), report, result, {
     focusId: focus.issueId, onWidthChange: (w) => renderVisual({ width: w }),
   });
@@ -776,6 +1131,13 @@ async function handle(text) {
   } = parse(text);
   const given = { widths: nums, breakpoints: breakpoints.length ? breakpoints : state.pending.breakpoints || [] };
 
+  if (urls.length > 2) {
+    // a list of pages: put it in the form, where the pairs can be checked before running
+    const f = addForm({ mode: 'many', list: `${text.trim()}\n`, ...(breakpoints.length ? { breakpoints } : {}) });
+    const n = parseList(f.data.list, f.data.migratedSite).pairs.length;
+    say(`<p>I put ${n > 1 ? `these <b>${n} pages</b>` : 'the URLs'} in the form above. Check the pairs and breakpoints, then run.</p>`);
+    return;
+  }
   if (urls.length >= 2) { await startComparison(urls[0], urls[1], given); return; }
   if (urls.length === 1) {
     const [url] = urls;
@@ -926,8 +1288,16 @@ async function renderResult(force = false) {
   const top = topIssues(report, Infinity); // trimmed to what fits by fitIssues()
   const tile = (sev, icon, label) => `<button type="button" class="sev-tile ${sev}" data-action="say" data-text="Show ${sev} issues">
     <span class="st-icon">${icon}</span><b>${s[sev]}</b><span>${label}</span></button>`;
+  const b = batchMsg();
+  const done = (b?.data.items || []).filter((it) => it.status === 'done');
+  const at = done.findIndex((it) => it.jobId === report.id);
+  const pageNav = at < 0 ? '' : `<div class="rp-page" title="${esc(report.original)} → ${esc(report.migrated)}">
+      <button type="button" class="icon-btn" data-action="batch-step" data-dir="-1" aria-label="Previous page" ${done.length > 1 ? '' : 'disabled'}>‹</button>
+      <span class="rp-path"><b>${esc(itemLabel(b.data.items, done[at]))}</b><span class="muted">Page ${b.data.items.indexOf(done[at]) + 1} of ${b.data.items.length}</span></span>
+      <button type="button" class="icon-btn" data-action="batch-step" data-dir="1" aria-label="Next page" ${done.length > 1 ? '' : 'disabled'}>›</button></div>`;
   el.innerHTML = `<div class="rp-card">
     <h2 class="rp-title">${ICON.bars}Comparison summary</h2>
+    ${pageNav}
     <div class="sev-tiles">${tile('high', ICON.warn, 'High')}${tile('medium', ICON.bang, 'Medium')}${tile('low', ICON.info, 'Low')}</div>
 
     <div class="rp-row"><h3>Top issues</h3>${s.issues ? `<button type="button" class="btn link" data-action="say" data-text="Show all issues">View all ${s.issues} ${ICON.arrow}</button>` : ''}</div>
@@ -968,7 +1338,7 @@ function renderSuggestions() {
   const box = root?.querySelector('.suggestions');
   if (!box) return;
   let items;
-  const running = state.messages.some((m) => m.type === 'progress' && m.data.status === 'running');
+  const running = state.messages.some((m) => ['progress', 'batch'].includes(m.type) && ['running', 'preparing'].includes(m.data.status));
   const last = state.messages[state.messages.length - 1];
   const formOpen = last?.type === 'form' && last.data.status === 'editing';
   if (running) items = ['How does it work?'];
@@ -1007,8 +1377,10 @@ function onAction(e) {
   if (action === 'form') addForm(); // eslint-disable-line no-use-before-define
   if (action === 'new-chat') newChat();
   if (action === 'form-demo' && msg) {
+    const o = `${window.location.origin}/demo/original.html`;
+    const m = `${window.location.origin}/demo/migrated.html`;
     Object.assign(msg.data, {
-      original: `${window.location.origin}/demo/original.html`, migrated: `${window.location.origin}/demo/migrated.html`, breakpoints: [640, 1024],
+      original: o, migrated: m, breakpoints: [640, 1024], list: msg.data.mode === 'many' ? `${o}   ${m}\n${m}   ${o}\n` : msg.data.list,
     });
     update(msg);
   }
@@ -1031,8 +1403,9 @@ function onAction(e) {
   }
   if (action === 'form-detect' && msg) {
     const d = msg.data;
+    if (d.mode === 'many') d.original = parseList(d.list, d.migratedSite).pairs[0]?.original || '';
     if (!/^https?:\/\//.test(d.original)) {
-      d.bpError = 'Enter the original page URL first, then detect.';
+      d.bpError = d.mode === 'many' ? 'Add the pages first, then detect.' : 'Enter the original page URL first, then detect.';
       update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] input[name="original"]`)?.focus());
       return;
     }
@@ -1043,7 +1416,7 @@ function onAction(e) {
       Object.assign(d, {
         breakpoints: numList([...numList(d.breakpoints), ...det.suggested].join(',')),
         note: det.suggested.length
-          ? `Detected ${det.suggested.join(', ')}px from ${det.mediaRules} media rules on the original${added.length ? '' : ' (already in your list)'}. Remove any you don't need.`
+          ? `Detected ${det.suggested.join(', ')}px from ${det.mediaRules} media rules on ${d.mode === 'many' ? `${pathLabel(d.original)} (used for every page)` : 'the original'}${added.length ? '' : ' (already in your list)'}. Remove any you don't need.`
           : 'No media-query breakpoints found on the original. Add your own.',
         noteEmpty: !det.suggested.length, // this note is about an empty list, so keep it showing
         bpError: '',
@@ -1062,7 +1435,35 @@ function onAction(e) {
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
-  if (action === 'send-coder') sendToCoder(el.dataset.report, el); // eslint-disable-line no-use-before-define
+  if (action === 'send-coder' && el.dataset.batch) {
+    const b = state.messages.find((m) => m.id === Number(el.dataset.batch));
+    const ids = (b?.data.items || []).filter((it) => it.status === 'done').map((it) => it.jobId);
+    if (ids.length) sendToCoder(ids.length === 1 ? ids[0] : ids, el, ids.length);
+  } else if (action === 'send-coder') sendToCoder(el.dataset.report, el);
+  if (action === 'batch-open' && msg) openBatchItem(msg, msg.data.items[Number(el.dataset.i)]);
+  if (action === 'batch-step') {
+    const b = batchMsg();
+    const done = (b?.data.items || []).filter((it) => it.status === 'done');
+    const at = done.findIndex((it) => it.jobId === state.reportId);
+    const next = done[(at + Number(el.dataset.dir) + done.length) % done.length];
+    if (next) openBatchItem(b, next, { announce: false });
+  }
+  if (action === 'batch-stop' && msg) {
+    el.disabled = true;
+    el.textContent = 'Stopping…';
+    api('/api/jobs/cancel', { ids: msg.data.items.filter((it) => it.status === 'queued').map((it) => it.jobId) })
+      .catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
+  }
+  if (action === 'form-mode' && msg) {
+    const many = el.dataset.mode === 'many';
+    const d = msg.data;
+    // carry what's typed over: a filled pair becomes the first line of the list
+    if (many && !String(d.list || '').trim() && d.original) d.list = `${d.original}${d.migrated ? ` ${d.migrated}` : ''}\n`;
+    d.mode = many ? 'many' : 'one';
+    d.error = '';
+    update(msg).then(() => root.querySelector(`.form-msg[data-mid="${msg.id}"] ${many ? '.page-list' : 'input[name="original"]'}`)?.focus());
+  }
+  if (action === 'form-attach' && msg) root.querySelector(`.form-msg[data-mid="${msg.id}"] .list-file`)?.click();
   if (el.classList.contains('copy')) copy(el.dataset.copy, el);
 }
 
@@ -1129,12 +1530,51 @@ export function mountChat(app, params) {
     const { name, value } = e.target;
     if (name) msg.data[name] = value;
     save();
+    if (name === 'list' || name === 'migratedSite') refreshListStatus(msg, card);
+  });
+  // a CSV or text file, attached or dropped on the page list
+  const readList = async (file, msg) => {
+    if (!file || !msg) return;
+    if (/\.(xlsx?|numbers|ods)$/i.test(file.name)) {
+      msg.data.error = `${file.name} is a spreadsheet file. Save it as CSV (File › Export or Download › .csv), then attach that.`;
+      update(msg);
+      return;
+    }
+    const text = await file.text();
+    const d = msg.data;
+    d.list = `${String(d.list || '').trim() ? `${d.list.replace(/\s*$/, '')}\n` : ''}${text.trim()}\n`;
+    d.error = '';
+    update(msg);
+  };
+  root.addEventListener('change', (e) => {
+    if (!e.target.matches('.list-file')) return;
+    readList(e.target.files[0], state.messages.find((m) => m.id === Number(e.target.dataset.mid)));
+  });
+  root.addEventListener('dragover', (e) => {
+    const ta = e.target.closest?.('.page-list');
+    if (!ta || !e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    ta.classList.add('drop');
+  });
+  root.addEventListener('dragleave', (e) => e.target.closest?.('.page-list')?.classList.remove('drop'));
+  root.addEventListener('drop', (e) => {
+    const ta = e.target.closest?.('.page-list');
+    if (!ta || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    ta.classList.remove('drop');
+    readList(e.dataTransfer.files[0], state.messages.find((m) => m.id === Number(ta.dataset.mid)));
   });
   // URL fields: fix up a missing https://, check as you leave the field, and recall
   // what was used last time for this site (breakpoints, ignored elements, paired page)
   root.addEventListener('change', async (e) => {
     const card = e.target.closest('.form-msg');
     const { name } = e.target;
+    if (card && name === 'migratedSite') {
+      const m = state.messages.find((x) => x.id === Number(card.dataset.mid));
+      e.target.value = normalizeUrl(e.target.value); // eslint-disable-line no-use-before-define
+      if (m) { m.data.migratedSite = e.target.value; save(); refreshListStatus(m, card); }
+      return;
+    }
     if (!card || !['original', 'migrated'].includes(name)) return;
     const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
     if (!msg) return;
@@ -1173,7 +1613,8 @@ export function mountChat(app, params) {
     if (!card) return;
     e.preventDefault();
     const msg = state.messages.find((m) => m.id === Number(card.dataset.mid));
-    if (msg) submitForm(msg); // eslint-disable-line no-use-before-define
+    if (msg?.data.mode === 'many') submitBatch(msg);
+    else if (msg) submitForm(msg); // eslint-disable-line no-use-before-define
   });
   const form = root.querySelector('.composer-form');
   const input = form.querySelector('textarea');
@@ -1192,7 +1633,7 @@ export function mountChat(app, params) {
   // "Run new comparison": a fresh chat with an empty form (what "New chat" used to do)
   newChat = () => {
     Object.assign(state, {
-      messages: [], reportId: null, visualWidth: null, pending: {},
+      messages: [], reportId: null, batchId: null, visualWidth: null, pending: {},
     });
     save();
     resultShown = undefined;
@@ -1206,6 +1647,11 @@ export function mountChat(app, params) {
     // replay the conversation; reconnect to comparisons that were still running
     Promise.all(state.messages.map(mountMessage)).then(scrollDown);
     state.messages.filter((m) => m.type === 'progress' && m.data.status === 'running').forEach(watchJob);
+    state.messages.filter((m) => m.type === 'batch' && m.data.status === 'running').forEach(watchBatch);
+    state.messages.filter((m) => m.type === 'batch' && m.data.status === 'preparing').forEach((m) => {
+      Object.assign(m.data, { status: 'error', error: 'These comparisons were interrupted before they started (the page was reloaded).' });
+      update(m);
+    });
   }
   resultShown = undefined; // fresh DOM: draw the panels again
   renderSuggestions();

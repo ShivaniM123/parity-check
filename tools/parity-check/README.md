@@ -37,6 +37,17 @@ Open **http://127.0.0.1:4300** and keep the terminal open while you use it. To c
 
 Breakpoints and ignored elements are remembered per site.
 
+### Several pages at once
+
+1. In the form, switch to **Several pages**.
+2. Add one page per line: the original URL, then the migrated URL. Separate them with spaces, a tab, a comma or `->`. You can paste two columns from a spreadsheet, or drop or attach a **CSV / TXT** file (save Excel or Sheets as CSV first). Header rows and lines without a URL are skipped.
+3. To list only the original URLs, fill in **Migrated site** (e.g. `https://main--site--org.aem.page`). Each page gets the same path there, without `.html`.
+4. Your breakpoints apply to every page. Leave them empty to use each site's saved breakpoints, or detect them from that site's first page.
+
+The pages run one after another (up to 100). The batch card shows each page's progress, then its score and High count. **Stop after this page** drops the pages still waiting. Click a page to open its summary; use ‹ › in the summary panel or the page list in **Visual parity** to move between pages. **Copy all pages for AEM Coder** builds one prompt. Differences that look the same on several pages (same block, property and values) are listed once, with the pages they're on.
+
+Pasting three or more URLs into the chat box fills this list for you.
+
 ## Use the results
 
 - **Comparison summary** (right panel): score, High / Medium / Low counts, top issues, and quick actions.
