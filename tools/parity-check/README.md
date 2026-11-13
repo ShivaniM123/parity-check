@@ -44,7 +44,7 @@ Breakpoints and ignored elements are remembered per site.
 3. To list only the original URLs, fill in **Migrated site** (e.g. `https://main--site--org.aem.page`). Each page gets the same path there, without `.html`.
 4. Your breakpoints apply to every page. Leave them empty to use each site's saved breakpoints, or detect them from that site's first page.
 
-The pages run one after another (up to 100). The batch card shows each page's progress, then its score and High count. **Stop after this page** drops the pages still waiting. Click a page to open its summary; use ‹ › in the summary panel or the page list in **Visual parity** to move between pages. **Copy all pages for AEM Coder** builds one prompt. Differences that look the same on several pages (same block, property and values) are listed once, with the pages they're on.
+Up to 100 pages per run. Lists of up to 5 pages run one after another; longer lists run **3 pages at a time**, roughly 3× faster. Each page still captures its widths one by one, in its own browser. A single comparison started during a batch waits for it, then runs alone. The batch card shows each page's progress, then its score and High count. **Stop** skips the pages still waiting; the ones already running finish. Click a page to open its summary; use ‹ › in the summary panel or the page list in **Visual parity** to move between pages. **Copy for AEM Coder** in the summary panel copies the prompt for the selected page only.
 
 Pasting three or more URLs into the chat box fills this list for you.
 

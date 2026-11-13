@@ -4,6 +4,7 @@
  */
 
 import { textKey, dice } from './match.js';
+import { wordDiff } from './words.js';
 
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -841,16 +842,19 @@ export function analyzeWidth({
   // wording changed on a matched element (copy edits, typos, test text left in the content)
   visiblePairs.filter(({ o, m, split, icon }) => !split && !icon && textual(o) && textual(m) && !o.labelOnly && !m.labelOnly
     && textKey(o.text) !== textKey(m.text)).forEach(({ o, m }) => {
+    // name the words that changed; quote both texts only when it was rewritten
+    const wd = wordDiff(o.text, m.text);
     add({
       o: ref(o),
       m: ref(m),
       category: 'content',
       property: 'text',
       severity: 'medium',
-      title: `Text differs: “${short(m.text, 40)}”, original “${short(o.text, 40)}”`,
+      title: wd ? `Wording: ${wd.title}` : `Text differs: “${short(m.text, 40)}”, original “${short(o.text, 40)}”`,
       detail: `Original: “${short(o.text, 120)}”. Migrated: “${short(m.text, 120)}”.`,
-      ov: short(o.text, 80),
-      mv: short(m.text, 80),
+      ov: wd ? wd.ov : short(o.text, 80),
+      mv: wd ? wd.mv : short(m.text, 80),
+      words: wd ? { o: wd.o, m: wd.m } : undefined,
       fix: {
         file: null, selector: null, decl: [], note: 'Correct the text in the page content.',
       },

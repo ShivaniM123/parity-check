@@ -80,13 +80,19 @@ export function fixHtml(fix) {
   return `<section class="fix"><h4>How to fix ${file}</h4>${code}${note}</section>`;
 }
 
+/** A wording snippet with the changed words highlighted. */
+export const wordsHtml = (segs) => segs.map(([t, changed]) => (changed ? `<mark>${esc(t)}</mark>` : esc(t))).join('');
+
 export function compareHtml(i) {
   if (!i.ov && !i.mv) return '';
-  const cell = (v, sw) => (v ? `${sw ? `<i class="sw" style="background:${esc(sw)}"></i>` : ''}<code>${esc(v)}</code>` : '<span class="muted">–</span>');
+  const cell = (v, sw, words) => {
+    if (!v) return '<span class="muted">–</span>';
+    return `${sw ? `<i class="sw" style="background:${esc(sw)}"></i>` : ''}<code>${words ? wordsHtml(words) : esc(v)}</code>`;
+  };
   return `<div class="compare">
-    <div class="cmp o"><span>Original</span>${cell(i.ov, i.swatch?.[0])}</div>
+    <div class="cmp o"><span>Original</span>${cell(i.ov, i.swatch?.[0], i.words?.o)}</div>
     <div class="cmp-arrow" aria-hidden="true">→</div>
-    <div class="cmp m"><span>Migrated</span>${cell(i.mv, i.swatch?.[1])}</div>
+    <div class="cmp m"><span>Migrated</span>${cell(i.mv, i.swatch?.[1], i.words?.m)}</div>
   </div>`;
 }
 
@@ -144,6 +150,19 @@ export function issueRow(i, status) {
 }
 
 const shortTitle = (t, n = 46) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+/*
+ * A pin shared by several issues on one element lists their numbers ("1 · 4 · 7"),
+ * the same numbers as in the issue list. Up to 4 are shown; more end with "…"
+ * (the tooltip lists them all).
+ */
+const PIN_MAX = 4;
+const pinNums = (issues) => {
+  const ns = issues.map((i) => i.n);
+  return ns.length > PIN_MAX ? [...ns.slice(0, PIN_MAX - 1), '…'] : ns;
+};
+const pinLabel = (issues) => pinNums(issues).join('<i class="pin-sep">·</i>');
+const pinWidth = (issues) => Math.max(22, pinNums(issues).join('').length * 8 + (pinNums(issues).length - 1) * 10 + 16);
 
 export class Viewer {
   constructor(root, report, result, onSelect, { onWidthChange } = {}) {
@@ -382,8 +401,13 @@ export class Viewer {
           const value = side === 'o' ? sel.ov : sel.mv;
           const below = first.y * scale < 34;
           const labelX = Math.max(4, Math.min(first.x * scale, img.clientWidth - 370)); // keep it inside the pane (label max 360px)
-          html += `<div class="focus-label sev-${sel.severity} ${below ? 'below' : ''}" style="left:${labelX}px;top:${(below ? first.y + first.h : first.y) * scale}px">
-            <b>${sel.n}</b>${expected ? '<span>Missing here</span>' : `${value ? `<code class="${side}">${esc(value)}</code>` : ''}<span>${esc(shortTitle(sel.title))}</span>`}</div>`;
+          // wording: this side's text with the changed words highlighted says it all
+          const words = sel.words?.[side];
+          let labelBody = `${value ? `<code class="${side}">${esc(value)}</code>` : ''}<span>${esc(shortTitle(sel.title))}</span>`;
+          if (words) labelBody = `<code class="${side}">${wordsHtml(words)}</code>`;
+          if (expected) labelBody = '<span>Missing here</span>';
+          html += `<div class="focus-label sev-${sel.severity} ${below ? 'below' : ''} ${words ? 'words' : ''}" style="left:${labelX}px;top:${(below ? first.y + first.h : first.y) * scale}px">
+            <b>${sel.n}</b>${labelBody}</div>`;
         }
       }
       // shown on the pane itself (not the scrolling page) so it stays in view
@@ -394,21 +418,35 @@ export class Viewer {
       if (this.showPins && !sel) {
         // keep pins inside the frame and nudge pins that would overlap
         const placed = [];
-        const maxX = img.clientWidth - 14;
         html += this.pinsFor(side).map((raw) => {
-          const p = { ...raw, x: Math.min(maxX, Math.max(12, raw.x * scale)), y: Math.max(12, raw.y * scale) };
-          while (placed.some((q) => Math.abs(q.x - p.x) < 26 && Math.abs(q.y - p.y) < 22)) p.x += 28;
+          // pins are centred 40% from their left edge: keep the whole pin in the frame
+          const w = pinWidth(raw.issues);
+          const p = {
+            ...raw, w, x: Math.min(img.clientWidth - w * 0.6 - 2, Math.max(w * 0.4 + 2, raw.x * scale)), y: Math.max(12, raw.y * scale),
+          };
+          // overlap is checked with each pin's own width (shared pins are wider)
+          const left = (q) => q.x - q.w * 0.4;
+          while (placed.some((q) => left(p) < left(q) + q.w + 4 && left(q) < left(p) + p.w + 4 && Math.abs(q.y - p.y) < 22)) p.x += 8;
           placed.push(p);
           return p;
         }).map((p) => {
           const worst = p.issues.reduce((a, b) => (SEV_RANK[b.severity] > SEV_RANK[a.severity] ? b : a));
           const reviewed = p.issues.every((i) => this.statuses?.[i.id] === 'ok');
-          const title = p.issues.map((i) => `${i.n}. ${i.title}`).join('\n');
+          const title = `${p.issues.length > 1 ? `${p.issues.length} issues on this element. Click to go through them.\n` : ''}${p.issues.map((i) => `${i.n}. ${i.title}`).join('\n')}`;
           return `<button type="button" class="pin sev-${worst.severity} ${reviewed ? 'approved' : ''}" data-ids="${p.issues.map((i) => esc(i.id)).join(',')}"
-            style="left:${p.x}px;top:${p.y}px" title="${esc(title)}">${p.issues[0].n}${p.issues.length > 1 ? `<small>+${p.issues.length - 1}</small>` : ''}</button>`;
+            style="left:${p.x}px;top:${p.y}px" title="${esc(title)}">${pinLabel(p.issues)}</button>`;
         }).join('');
       }
       marks.innerHTML = html;
+      // shared pins are wider than estimated at times: measure, and pull them back into the frame
+      const frame = marks.getBoundingClientRect();
+      marks.querySelectorAll('.pin').forEach((pin) => {
+        const r = pin.getBoundingClientRect();
+        let dx = 0;
+        if (r.left < frame.left + 2) dx = frame.left + 2 - r.left;
+        else if (r.right > frame.right - 2) dx = frame.right - 2 - r.right;
+        if (dx) pin.style.left = `${parseFloat(pin.style.left) + dx}px`;
+      });
       marks.querySelectorAll('.pin').forEach((pin) => {
         const ids = pin.dataset.ids.split(',');
         pin.addEventListener('click', (e) => {

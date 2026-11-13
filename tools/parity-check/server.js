@@ -12,7 +12,7 @@ import { chromium } from 'playwright';
 import { detectBreakpoints, testWidths } from './lib/breakpoints.js';
 import { runComparison } from './lib/run.js';
 import { buildExport, exportName } from './lib/export.js';
-import { buildFixPrompt, buildBatchPrompt } from './lib/prompt.js';
+import { buildFixPrompt } from './lib/prompt.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(ROOT, '..', '..');
@@ -34,7 +34,16 @@ const TYPES = {
 };
 
 const jobs = new Map();
-let queue = Promise.resolve();
+
+/*
+ * Job queue, in the order jobs were started. A job runs once fewer than its
+ * `parallel` limit are running: 1 for a single comparison and small batches,
+ * so they run alone; PARALLEL for big batches.
+ */
+const PARALLEL = 3; // pages at a time in a batch of more than PARALLEL_FROM pages
+const PARALLEL_FROM = 5;
+const waiting = [];
+let active = 0;
 
 const send = (res, code, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -166,31 +175,54 @@ function startJob(body) {
     job.log.push(entry);
     job.listeners.forEach((fn) => fn({ type: 'log', ...entry }));
   };
+  job.write = log;
+  job.parallel = Math.max(1, Math.min(PARALLEL, body.parallel || 1));
   jobs.set(job.id, job);
-  queue = queue.then(async () => {
-    if (job.status === 'cancelled') return; // stopped while it was waiting
-    job.status = 'running';
-    log('Started');
-    try {
-      const report = await runComparison(job, { reportsDir: REPORTS, repoRoot: REPO_ROOT, log });
-      job.summary = report.summary;
-      job.status = 'done';
-    } catch (e) {
-      job.status = 'error';
-      job.error = e.message;
-      log(`Error: ${e.message}`);
-    }
-    notifyStatus(job);
-  });
+  waiting.push(job);
+  pump(); // eslint-disable-line no-use-before-define
   return job;
+}
+
+async function runJob(job) {
+  job.status = 'running';
+  job.write('Started');
+  try {
+    const report = await runComparison(job, { reportsDir: REPORTS, repoRoot: REPO_ROOT, log: job.write });
+    job.summary = report.summary;
+    job.status = 'done';
+  } catch (e) {
+    job.status = 'error';
+    job.error = e.message;
+    job.write(`Error: ${e.message}`);
+  }
+  notifyStatus(job);
+}
+
+function jobFinished() {
+  active -= 1;
+  pump(); // eslint-disable-line no-use-before-define
+}
+
+/** Starts waiting jobs, in order, while there's room for the next one. */
+function pump() {
+  while (waiting.length) {
+    const next = waiting[0];
+    if (next.status === 'cancelled') { waiting.shift(); continue; } // eslint-disable-line no-continue
+    if (active >= next.parallel) break;
+    waiting.shift();
+    active += 1;
+    runJob(next).finally(jobFinished);
+  }
 }
 
 const FINAL = new Set(['done', 'error', 'cancelled']);
 const MAX_BATCH = 100;
 
 /**
- * Several page pairs at once: one job per pair, run one after another by the
- * same queue. All pairs are checked first, so a typo doesn't start half a batch.
+ * Several page pairs at once: one job per pair. Big batches run PARALLEL pages
+ * at a time (each page still captures its widths one by one, in its own
+ * browser); small ones one after another. All pairs are checked first, so a
+ * typo doesn't start half a batch.
  */
 function startBatch(body) {
   const pairs = Array.isArray(body.pairs) ? body.pairs : [];
@@ -201,12 +233,17 @@ function startBatch(body) {
       throw new Error(`Page ${i + 1}: both URLs must be valid http(s) URLs.`);
     }
   });
-  return pairs.map((p) => startJob({
-    original: p.original,
-    migrated: p.migrated,
-    breakpoints: p.breakpoints?.length ? p.breakpoints : body.breakpoints,
-    options: p.options || body.options,
-  }));
+  const parallel = pairs.length > PARALLEL_FROM ? PARALLEL : 1;
+  return {
+    parallel,
+    jobs: pairs.map((p) => startJob({
+      original: p.original,
+      migrated: p.migrated,
+      breakpoints: p.breakpoints?.length ? p.breakpoints : body.breakpoints,
+      options: p.options || body.options,
+      parallel,
+    })),
+  };
 }
 
 /** Streams the progress of several jobs (a batch) over one connection. */
@@ -289,8 +326,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (p === '/api/batches' && req.method === 'POST') {
-      const list = startBatch(await readBody(req));
-      send(res, 202, { jobs: list.map((j) => ({ id: j.id, widths: j.widths })) });
+      const batch = startBatch(await readBody(req));
+      send(res, 202, { parallel: batch.parallel, jobs: batch.jobs.map((j) => ({ id: j.id, widths: j.widths })) });
       return;
     }
     if (p === '/api/jobs/events') {
@@ -304,21 +341,6 @@ const server = http.createServer(async (req, res) => {
       const cancelled = ids.map((id) => jobs.get(id)).filter((j) => j?.status === 'queued');
       cancelled.forEach((j) => { j.status = 'cancelled'; notifyStatus(j); });
       send(res, 200, { cancelled: cancelled.map((j) => j.id) });
-      return;
-    }
-    if (p === '/api/fix-prompt' && req.method === 'POST') {
-      // one AEM Coder prompt for several reports (a batch)
-      const { ids = [] } = await readBody(req);
-      const entries = (await Promise.all(ids.filter((id) => /^[\w-]+$/.test(id)).map(async (id) => {
-        const dir = join(REPORTS, id);
-        if (!existsSync(join(dir, 'report.json'))) return null;
-        const report = JSON.parse(await readFile(join(dir, 'report.json'), 'utf8'));
-        const reviewFile = join(dir, 'review.json');
-        const statuses = existsSync(reviewFile) ? JSON.parse(await readFile(reviewFile, 'utf8')).statuses || {} : {};
-        return { report, statuses };
-      }))).filter(Boolean);
-      if (!entries.length) { send(res, 404, { error: 'No finished reports' }); return; }
-      send(res, 200, entries.length === 1 ? buildFixPrompt(entries[0].report, entries[0].statuses) : buildBatchPrompt(entries), 'text/markdown; charset=utf-8');
       return;
     }
     let m = p.match(/^\/api\/jobs\/([\w-]+)\/events$/);

@@ -56,6 +56,14 @@ kbd { font: 600 10.5px/1 var(--mono); background: #f2f4f7; border: 1px solid var
 .focus-label code { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 7px; background: #f2f4f7; color: var(--text); }
 .focus-label code.m { background: color-mix(in srgb, var(--c) 14%, #fff); color: color-mix(in srgb, var(--c) 80%, #000); }
 
+/* wording issues: the text wraps, the changed words are highlighted */
+.focus-label.words { white-space: normal; border-radius: 14px; max-width: min(440px, calc(100% - 8px)); align-items: flex-start; }
+.focus-label.words code { border-radius: 8px; line-height: 1.5; padding: 2px 8px; color: var(--text); background: #f2f4f7; }
+.focus-label mark, .cmp mark { background: #fde68a; color: #101828; font-weight: 700; border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -2px 0 #f59e0b; }
+
+/* a pin shared by several issues lists their numbers */
+.pin .pin-sep { font-style: normal; opacity: 0.7; margin: 0 2px; }
+
 /* VisBug-style measurement guide */
 .measure { position: absolute; width: 0; border-left: 1.5px solid #d6249f; z-index: 4; pointer-events: none; }
 .measure::before, .measure::after { content: ''; position: absolute; left: -6px; width: 11px; border-top: 1.5px solid #d6249f; }

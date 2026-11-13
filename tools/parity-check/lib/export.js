@@ -17,6 +17,8 @@ const CATEGORY_LABEL = {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
+// wording issues: the changed words highlighted
+const marked = (segs) => segs.map(([t, changed]) => (changed ? `<mark>${esc(t)}</mark>` : esc(t))).join('');
 
 const rectsFor = (issue, side) => {
   if (side === 'o') return (issue.oRects?.length ? issue.oRects : [issue.o?.rect]).filter(Boolean);
@@ -166,6 +168,7 @@ th:first-child, td:first-child { text-align: left; }
 .crop .none { border: 1px dashed #d0d5dd; border-radius: 4px; padding: 24px 8px; text-align: center; color: #667085; }
 .cmp { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
 .cmp span.v { border: 1px solid #eaecf0; border-radius: 6px; padding: 2px 8px; }
+.cmp mark { background: #fde68a; color: inherit; font-weight: 700; border-radius: 3px; padding: 0 2px; }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.2); margin-right: 4px; vertical-align: -1px; }
 pre { background: #f8f9fc; border: 1px solid #eaecf0; border-radius: 6px; padding: 8px 10px; margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
 .file { color: #4353ff; font-weight: 600; }
@@ -297,7 +300,7 @@ export async function buildExport(report, dir, { inline = true } = {}) {
         <p class="detail">${esc(i.detail)}</p>
         ${crops}
         ${styleTable(i)}
-        ${i.ov || i.mv ? `<div class="cmp"><span class="lbl">Original</span><span class="v">${sw(i.swatch?.[0])}<code>${esc(i.ov || '–')}</code></span>→<span class="lbl m">Migrated</span><span class="v">${sw(i.swatch?.[1])}<code>${esc(i.mv || '–')}</code></span></div>` : ''}
+        ${i.ov || i.mv ? `<div class="cmp"><span class="lbl">Original</span><span class="v">${sw(i.swatch?.[0])}<code>${i.words ? marked(i.words.o) : esc(i.ov || '–')}</code></span>→<span class="lbl m">Migrated</span><span class="v">${sw(i.swatch?.[1])}<code>${i.words ? marked(i.words.m) : esc(i.mv || '–')}</code></span></div>` : ''}
         ${i.m?.selector ? `<div class="muted">Element: <code>${esc(i.m.selector)}</code></div>` : ''}
         ${i.fix?.css ? `<div><b>Fix</b> in <span class="file">${esc(i.fix.file)}</span><pre>${esc(i.fix.css)}</pre></div>` : ''}
         ${i.fix?.note ? `<div><b>How to fix:</b> ${esc(i.fix.note)}</div>` : ''}

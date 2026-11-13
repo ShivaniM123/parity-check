@@ -328,7 +328,7 @@ function batchHtml(msg) {
   if (running) {
     const doneJobs = items.filter((it) => it.status === 'done').length;
     const left = doneJobs ? Math.round((((Date.now() - d.started) / doneJobs) * (n - fin)) / 1000) : 0;
-    sub = `${fin} of ${n} done${left > 5 ? ` · about ${fmtTime(left)} left` : ''}`;
+    sub = `${d.parallel > 1 ? `${d.parallel} at a time · ` : ''}${fin} of ${n} done${left > 5 ? ` · about ${fmtTime(left)} left` : ''}`;
   } else if (ok.length) {
     const avg = Math.round(ok.reduce((sum, it) => sum + it.summary.score, 0) / ok.length);
     const high = ok.reduce((sum, it) => sum + it.summary.high, 0);
@@ -345,9 +345,8 @@ function batchHtml(msg) {
         title="${esc(it.original)} → ${esc(it.migrated)}" ${it.status === 'done' ? '' : 'aria-disabled="true"'}>
         <span class="br-n">${i + 1}</span><span class="br-path">${esc(itemLabel(items, it))}</span><span class="br-meta">${batchRowMeta(it)}</span></button></li>`).join('')}</ol>
     <div class="actions">
-      ${ok.length ? `<button type="button" class="btn ${running ? 'secondary' : 'primary'}" data-action="send-coder" data-batch="${msg.id}" title="One prompt with the open issues of every finished page">Copy ${ok.length > 1 ? `all ${ok.length} pages` : ''} for AEM Coder</button>` : ''}
-      ${running && queued ? `<button type="button" class="btn ghost" data-action="batch-stop" data-mid="${msg.id}">Stop after this page</button>` : ''}
-      ${ok.length ? '<span class="muted br-hint">Click a page to see its issues.</span>' : ''}
+      ${running && queued ? `<button type="button" class="btn ghost" data-action="batch-stop" data-mid="${msg.id}" title="Pages still waiting are skipped; the ones running now finish">${d.parallel > 1 ? 'Stop after the running pages' : 'Stop after this page'}</button>` : ''}
+      ${ok.length ? '<span class="muted br-hint">Click a page to see its issues and copy its prompt for AEM Coder.</span>' : ''}
     </div></div>`;
 }
 
@@ -489,7 +488,7 @@ async function submitBatch(msg) {
       return !s.error;
     });
     if (!runnable.length) throw new Error(settings.values().next().value.error);
-    const { jobs } = await api('/api/batches', {
+    const { jobs, parallel } = await api('/api/batches', {
       pairs: runnable.map((it) => {
         const s = settings.get(hostOf(it.original));
         return {
@@ -502,7 +501,7 @@ async function submitBatch(msg) {
     settings.forEach((s, host) => {
       if (!s.error && s.breakpoints.length) api('/api/sites', { host, breakpoints: s.breakpoints, hideSelectors: s.hide }).catch(() => {});
     });
-    Object.assign(b, { status: 'running', started: Date.now() });
+    Object.assign(b, { status: 'running', started: Date.now(), parallel });
     update(batch);
     watchBatch(batch);
   } catch (e) {
@@ -640,11 +639,9 @@ function fixesHtml(report, file) {
       <pre>${esc(f.css)}</pre></div>`).join('')}</div>`;
 }
 
-/** The AEM Coder prompt for one report, or one prompt for several (a batch). */
-const fixPrompt = async (ids) => {
-  const res = Array.isArray(ids)
-    ? await fetch('/api/fix-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) })
-    : await fetch(`/api/reports/${ids}/fix-prompt`);
+/** The AEM Coder prompt for one page (in a batch: the selected page). */
+const fixPrompt = async (id) => {
+  const res = await fetch(`/api/reports/${id}/fix-prompt`);
   if (!res.ok) throw new Error('Could not build the prompt');
   return res.text();
 };
@@ -655,7 +652,7 @@ const fixPrompt = async (ids) => {
  * clipboard write starts inside the click, with the prompt still loading, so
  * the browser keeps treating it as a user action.
  */
-async function sendToCoder(reportId, btn, pages = 1) {
+async function sendToCoder(reportId, btn) {
   const old = btn.innerHTML; // tiles have an icon: put it back afterwards
   btn.disabled = true;
   btn.textContent = 'Copying…';
@@ -668,7 +665,7 @@ async function sendToCoder(reportId, btn, pages = 1) {
     }
     const n = ((await text).match(/^- \[/gm) || []).length;
     btn.textContent = 'Copied ✓';
-    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'}${pages > 1 ? ` across ${pages} pages (differences that look the same on several pages are listed once)` : ''}, each with the element, the original and migrated values and the widths. No suggested fixes: AEM Coder works out the fix from its code. Approved differences are left out.</p>`);
+    say(`<p><b>Copied for AEM Coder.</b> Open the AEM Coder chat, paste (<kbd>⌘</kbd> <kbd>V</kbd>) and send. It has ${n} open issue${n === 1 ? '' : 's'}, each with the element, the original and migrated values and the widths. No suggested fixes: AEM Coder works out the fix from its code. Approved differences are left out.</p>`);
   } catch (err) {
     btn.innerHTML = old;
     say(`<p class="err">Couldn't copy: ${esc(err.message)}. Type <code>prompt for AEM Coder</code> to copy it from the preview.</p>`);
@@ -1060,7 +1057,7 @@ async function renderVisual(focus = {}) {
   const inBatch = done.some((it) => it.jobId === report.id);
   panel.innerHTML = `<div class="visual-head">
       ${inBatch ? `<label class="vh-page" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
-        <select aria-label="Page">${done.map((it) => `<option value="${esc(it.jobId)}" ${it.jobId === report.id ? 'selected' : ''}>${b.data.items.indexOf(it) + 1}. ${esc(itemLabel(b.data.items, it))} · ${it.summary.score}</option>`).join('')}</select></label>`
+        <select aria-label="Page">${done.map((it) => `<option value="${esc(it.jobId)}" ${it.jobId === report.id ? 'selected' : ''}>${b.data.items.indexOf(it) + 1}. ${esc(itemLabel(b.data.items, it))}</option>`).join('')}</select></label>`
     : `<div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
         <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>`}
       <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
@@ -1307,7 +1304,7 @@ async function renderResult(force = false) {
     <div class="rp-actions"><h3>Quick actions</h3>
     <div class="quick">
       <button type="button" class="qa" data-action="download" data-format="pdf" data-report="${esc(report.id)}">${ICON.download}<span>Download report</span></button>
-      <button type="button" class="qa" data-action="send-coder" data-report="${esc(report.id)}" title="Copy a prompt with every open issue, then paste it into the AEM Coder chat">${ICON.copy}<span>Copy for AEM Coder</span></button>
+      <button type="button" class="qa" data-action="send-coder" data-report="${esc(report.id)}" title="${at < 0 ? 'Copy a prompt with every open issue' : 'Copy a prompt with this page\'s open issues'}, then paste it into the AEM Coder chat">${ICON.copy}<span>Copy for AEM Coder</span></button>
       <button type="button" class="qa" data-action="new-chat" title="Start a fresh chat with an empty comparison form">${ICON.rerun}<span>Run new comparison</span></button>
     </div></div>
   </div>`;
@@ -1435,11 +1432,7 @@ function onAction(e) {
   if (action === 'download') {
     downloadReport(el.dataset.report, el.dataset.format, el).catch((err) => say(`<p class="err">${esc(err.message)}</p>`));
   }
-  if (action === 'send-coder' && el.dataset.batch) {
-    const b = state.messages.find((m) => m.id === Number(el.dataset.batch));
-    const ids = (b?.data.items || []).filter((it) => it.status === 'done').map((it) => it.jobId);
-    if (ids.length) sendToCoder(ids.length === 1 ? ids[0] : ids, el, ids.length);
-  } else if (action === 'send-coder') sendToCoder(el.dataset.report, el);
+  if (action === 'send-coder') sendToCoder(el.dataset.report, el);
   if (action === 'batch-open' && msg) openBatchItem(msg, msg.data.items[Number(el.dataset.i)]);
   if (action === 'batch-step') {
     const b = batchMsg();
