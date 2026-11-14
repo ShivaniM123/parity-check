@@ -1,86 +1,112 @@
 # Parity Check
 
-Compare an **original page** with its **migrated AEM Edge Delivery Services page** at the site's breakpoints. Parity Check lists every visible difference (layout, spacing, typography, colour, images, content) on side-by-side screenshots, and turns them into a PDF report or a prompt for AEM Coder.
+A local tool that compares an original web page with its migrated AEM Edge Delivery Services (EDS) page at the site's own breakpoints, and lists every visible difference on side-by-side screenshots.
 
-It runs on your machine, with no AI service. Only the pages you compare are loaded.
+## Overview
 
-## Start the tool
+Parity Check loads both pages in a headless browser at each breakpoint you choose. It matches their content and reports what differs: layout, spacing, typography, colour, images and content. You review the issues in a chat-style interface, then hand them to AEM Coder or download a PDF report. It runs on your machine, without an AI service.
 
-You need **Node.js 18 or later** (`node -v` to check).
+## Features
 
-First time only, in a terminal:
+**1. One page or several pages**
+* Compare a single original and migrated page, or a list of up to 100 pairs. Paste a list, paste two columns from a spreadsheet, or attach a CSV / TXT file. If you only have the original URLs, give the migrated site and each page gets the same path there, without `.html`.
+* Lists of more than 5 pages run 3 pages at a time, and a run can be stopped.
 
-```sh
-cd path/to/your-repo/tools/parity-check
-npm install
-npx playwright install chromium
+**2. Site breakpoints**
+* Breakpoints are added as chips: type a width, pick a common one, or detect them from the original page's CSS. Only the widths you choose are tested.
+* Breakpoints and ignored elements are remembered per site. Cookie banners are ignored by default; add your own selectors for chat widgets, ads or feeds.
+
+**3. Parity checks**
+* Missing, extra or changed content. Wording issues name the exact words, e.g. *"hosts" → "host"; extra "2" at the end*.
+* Columns per row, spacing, font family, size, weight, line height, letter spacing, casing and alignment, text and background colour, buttons, image size and crop.
+* Elements hidden or shown per width, social embeds, failed fonts and requests, and breakpoints that differ between the two pages.
+* Content is matched by what it says, not by where it sits, so moved sections and elements built differently aren't reported as missing.
+
+**4. Results and review**
+* A **Comparison complete** card with the parity score (0–100, higher is closer) and High / Medium / Low counts. For several pages it shows the selected page, with all pages listed below.
+* **Visual parity**: both pages side by side at each width, scrolling together, with every issue pinned. A pin covering several issues lists them when clicked.
+* Mark each issue **Needs fix** (`F`) or **Approve** (`A`); move between issues with `←` `→`.
+
+**5. Hand-off**
+* **Copy for AEM Coder**: a ready prompt with the selected page's open issues (element, original and migrated values, widths). Approved issues are left out.
+* **Download report**: a PDF with every issue and close-ups.
+* **History** of past comparisons, and chat requests such as `show high issues`, `issue #3 at 768`, `breakpoints` or `re-run`.
+
+## File Overview
+
+```
+tools/parity-check/
+├── server.js            # Local web server: job queue (3 pages at a time for long lists), API, PDF export
+├── sites.json           # Saved breakpoints and ignored elements per site
+├── package.json         # Dependencies: Playwright (browser), pixelmatch + pngjs (pixel diff)
+├── lib/
+│   ├── run.js           # Runs one comparison: every width, both pages, writes the report
+│   ├── capture.js       # Opens a page at one width: screenshot + element data
+│   ├── extract.js       # Reads elements, styles and media queries inside the page
+│   ├── breakpoints.js   # Detects breakpoints from the page's CSS
+│   ├── match.js         # Pairs original and migrated elements by content
+│   ├── rules.js         # The parity checks; turns differences into issues and a score
+│   ├── words.js         # Word-level text comparison for wording issues
+│   ├── diff.js          # Pixel difference between the two screenshots
+│   ├── fixes.js         # CSS suggestions per block file (PDF report, "show all fixes")
+│   ├── prompt.js        # The AEM Coder prompt
+│   └── export.js        # The printable report behind the PDF
+├── public/              # The interface: chat, form, result cards, Visual parity
+├── demo/                # Two demo pages with deliberate differences
+├── reports/             # Generated reports (local only, not committed)
+└── README.md            # This documentation
 ```
 
-Then start it:
+The whole folder is listed in the repository's `.hlxignore`, so none of it is served by Edge Delivery.
 
-```sh
-npm start
-```
+## Workflow
 
-Open **http://127.0.0.1:4300** and keep the terminal open while you use it. To check it works, click **Use the demo pages**, then **Run comparison**.
+| Step | What happens |
+|------|--------------|
+| **Enter pages** | One pair in the form, or a list under **Several pages** |
+| **Choose breakpoints** | Your chips, the saved ones for the site, or detected from the original's CSS |
+| **Capture** | Each page is opened at each width; screenshot and element data are taken once late content has loaded |
+| **Match** | Original and migrated elements are paired by their text, then images and controls by position |
+| **Check** | Rules compare the pairs (content, layout, spacing, typography, colour, images) and give each width a score |
+| **Review** | The result card, summary panel and Visual parity show the issues; approve the intended ones |
+| **Hand off** | Copy the prompt for AEM Coder, or download the PDF report |
 
-- **Stop:** `Ctrl` + `C` in the terminal.
-- **After pulling new code:** run `npm install`, then `npm start` again.
-- **Port 4300 busy:** `PORT=4310 npm start`, then open http://127.0.0.1:4310.
+**Capabilities:** single and batch comparison · per-site breakpoints · content-based matching · exact-word wording issues · side-by-side pins · review and approve · AEM Coder prompt · PDF report · history
 
-## Run a comparison
+## How to Use
 
-1. Enter the **original page** and the **migrated page** (an `aem.page` URL, or `http://localhost:3000/...` while `aem up` runs).
-2. Add **breakpoints** as chips: type a width, pick a common one, or click **Detect from original**. Leave it empty to detect them when you run. Only the widths you choose are tested.
-3. Optional: under **Ignore elements**, list selectors for things that change on every load (chat widgets, ads, feeds).
-4. Click **Run comparison**.
+1. **Install Node.js and Git** (one time)
+   * Node.js 18 or later: download the LTS installer from [nodejs.org](https://nodejs.org).
+   * Git: on a Mac, run `git --version` in Terminal; if it isn't installed, macOS offers to install it.
 
-Breakpoints and ignored elements are remembered per site.
+2. **Get the code** (one time)
+   ```sh
+   git clone https://github.com/ShivaniM123/parity-check.git
+   cd parity-check
+   git checkout aem-20261109-1805    # the branch with the tool, until it's merged into main
+   ```
 
-### Several pages at once
+3. **Install the tool** (one time)
+   ```sh
+   cd tools/parity-check
+   npm install
+   npx playwright install chromium   # the browser that takes the screenshots
+   ```
 
-1. In the form, switch to **Several pages**.
-2. Add one page per line: the original URL, then the migrated URL. Separate them with spaces, a tab, a comma or `->`. You can paste two columns from a spreadsheet, or drop or attach a **CSV / TXT** file (save Excel or Sheets as CSV first). Header rows and lines without a URL are skipped.
-3. To list only the original URLs, fill in **Migrated site** (e.g. `https://main--site--org.aem.page`). Each page gets the same path there, without `.html`.
-4. Your breakpoints apply to every page. Leave them empty to use each site's saved breakpoints, or detect them from that site's first page.
+4. **Start it**
+   ```sh
+   npm start
+   ```
+   Open **http://127.0.0.1:4300** and keep the terminal open while you use it. Stop it with `Ctrl` + `C`.
 
-Up to 100 pages per run. Lists of up to 5 pages run one after another; longer lists run **3 pages at a time**, roughly 3× faster. Each page still captures its widths one by one, in its own browser. A single comparison started during a batch waits for it, then runs alone. While it runs, the card shows each page's progress, then its score and High count. **Stop** skips the pages still waiting; the ones already running finish.
+5. **Run a comparison**
+   * To check the setup, click **Use the demo pages**, then **Run comparison**.
+   * For your own pages, enter the original and migrated URLs (an `aem.page` URL, or `http://localhost:3000/...` while `aem up` runs), add breakpoints, and click **Run comparison**.
 
-When it's done, you get the same **Comparison complete** card as for one page, for the selected page, with **All pages** listed below. Click a page there to show it in the card. The summary panel's ‹ › and the page list in **Visual parity** switch pages too, and all three stay in step. **Copy for AEM Coder** copies the prompt for the selected page only.
+## Points to Note
 
-Pasting three or more URLs into the chat box fills this list for you.
-
-## Use the results
-
-- **Comparison complete** (chat): the two pages, the parity score (0–100, higher is closer) with High / Medium / Low counts, and **Show visual parity**.
-- **Comparison summary** (right panel): High / Medium / Low counts, top issues, and quick actions.
-- **Chat | Visual parity** (top bar): switch between the conversation and both pages side by side, with each issue pinned and highlighted. The panes scroll together section by section. Pick a width with the tabs at the top.
-- **Pins:** each pin shows one issue number. A pin with a second pin peeking out behind it has several issues on the same element: click it to list them, then pick one.
-- **Wording issues** name the exact words, e.g. *Wording: "hosts" → "host"; extra "2" at the end*. The changed words are highlighted on both screenshots.
-- **Review:** mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Use `←` `→` to move between issues.
-- **Copy for AEM Coder:** copies a ready prompt with every open issue (element, original and migrated values, widths). Paste it into AEM Coder; approved issues are left out.
-- **Download report:** a PDF with every issue, close-ups and suggested CSS.
-
-You can also ask in the chat, e.g. `show high issues`, `what's wrong on mobile?`, `issue #3 at 375`, `breakpoints` (the original's and the migrated page's breakpoints, and where they differ), `re-run`, `history`.
-
-## What it checks
-
-Missing, extra or changed content, with the exact words that changed · columns per row · spacing · font family, size, weight, line height, letter spacing, casing, alignment · text and background colour · buttons · image size and crop · elements hidden or shown per width · social embeds · failed fonts and requests.
-
-Content is matched by what it says, not by where it sits. So moved sections, and elements built differently but looking the same, aren't reported as missing.
-
-## Limits
-
-It's a fast first pass, not a final verdict. It can be wrong on layouts it hasn't seen (carousels, tabs, accordions, forms), on content that changes between loads (feeds, related lists, dates), and on third-party widgets. The screenshots are the ground truth.
-
-On a new site, check the first few pages' issues in **Visual parity**, add noisy areas to **Ignore elements**, and approve intended differences. If an issue is wrong, report the two URLs, the width and the issue title.
-
-## Troubleshooting
-
-| Problem | Fix |
-| --- | --- |
-| `Cannot find package 'playwright'` | Run `npm install` in `tools/parity-check`. |
-| No browser / `Executable doesn't exist` | Run `npx playwright install chromium`. |
-| Still the old layout after restarting | Restarting doesn't download new code. Update your copy from the branch first, then run `npm start` and reload the tool's tab. |
-| Old issues after an update | Restart the tool and re-run. Old reports keep their results. |
-| A cookie banner or chat bubble is flagged | Add its selector to **Ignore elements**. |
+* **Updating:** restarting the tool doesn't download new code. Stop it, run `git pull` and `npm install` in `tools/parity-check`, start it again and reload the tab.
+* **Reports stay on your machine** in `reports/`. AEM Coder can't open them; use **Copy for AEM Coder** and paste the prompt instead.
+* **Port 4300 busy:** start with `PORT=4310 npm start` and open http://127.0.0.1:4310.
+* **"Cannot find package 'playwright'"** or **"Executable doesn't exist":** redo step 3.
+* **It's a first pass, not a final verdict.** Carousels, tabs, accordions, content that changes between loads and third-party widgets can produce wrong issues. The screenshots are the ground truth; approve intended differences and add noisy areas to **Ignore elements**.
