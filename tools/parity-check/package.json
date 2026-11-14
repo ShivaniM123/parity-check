@@ -1,0 +1,15 @@
+{
+  "name": "parity-check",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Visual parity checker: compares an original page with its migrated EDS page across the site's own breakpoints and recommends CSS fixes.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "pixelmatch": "7.1.0",
+    "playwright": "1.58.2",
+    "pngjs": "7.0.0"
+  }
+}

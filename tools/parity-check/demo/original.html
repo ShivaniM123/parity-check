@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwind Outdoor — Original</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Georgia, 'Times New Roman', serif; color: #1f2a37; background: #fff; }
+  .site-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; background: #12372a; color: #fff; }
+  .site-header a { color: #fff; text-decoration: none; margin-left: 20px; font-family: Arial, sans-serif; font-size: 15px; }
+  .site-header .logo { font-size: 22px; font-weight: 700; margin: 0; }
+  .site-header nav { display: none; }
+  .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .hero { background: #f4f1ea; padding: 64px 0; text-align: center; }
+  .hero h1 { font-size: 34px; line-height: 1.2; margin: 0 0 16px; }
+  .hero p { font-family: Arial, sans-serif; font-size: 18px; line-height: 1.6; margin: 0 auto 28px; max-width: 640px; }
+  .btn { display: inline-block; background: #d9480f; color: #fff; padding: 14px 28px; border-radius: 24px; font-family: Arial, sans-serif; font-weight: 700; text-decoration: none; }
+  .features { padding: 56px 0; }
+  .features h2 { font-size: 28px; margin: 0 0 32px; text-align: center; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 24px; list-style: none; padding: 0; margin: 0; }
+  .card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .card img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+  .card h3 { font-size: 20px; margin: 16px 16px 8px; }
+  .card p { font-family: Arial, sans-serif; font-size: 15px; line-height: 1.5; margin: 0 16px 20px; color: #4b5563; }
+  .social h2 { font-size: 28px; margin: 0 0 24px; text-align: center; }
+  .testimonials { background: #12372a; color: #fff; padding: 48px 0; text-align: center; }
+  .testimonials h2 { font-size: 28px; margin: 0 0 16px; }
+  .testimonials blockquote { font-size: 20px; font-style: italic; margin: 0 auto; max-width: 720px; }
+  .site-footer { padding: 32px 24px; font-family: Arial, sans-serif; font-size: 14px; color: #6b7280; text-align: center; }
+  @media (min-width: 640px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .hero h1 { font-size: 42px; }
+  }
+  @media (min-width: 1024px) {
+    .site-header nav { display: block; }
+    .grid { grid-template-columns: repeat(3, 1fr); }
+    .hero { padding: 96px 0; }
+    .hero h1 { font-size: 52px; }
+  }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <p class="logo">Northwind Outdoor</p>
+    <nav><a href="/gear">Gear</a><a href="/trips">Trips</a><a href="/journal">Journal</a></nav>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>Gear built for the long trail</h1>
+        <p>Lightweight, repairable equipment designed with guides who spend two hundred nights a year outside.</p>
+        <a class="btn" href="/gear">Shop the collection</a>
+      </div>
+    </section>
+    <section class="features">
+      <div class="container">
+        <h2>Why hikers choose us</h2>
+        <ul class="grid">
+          <li class="card"><img alt="Tent at dusk" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%232f6f4f'/%3E%3Cpolygon points='120,230 200,90 280,230' fill='%23f4f1ea'/%3E%3C/svg%3E"><h3>Repairable by design</h3><p>Every product ships with spare parts and a lifetime repair promise.</p></li>
+          <li class="card"><img alt="Backpack on rock" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23d9480f'/%3E%3Crect x='150' y='80' width='100' height='150' rx='20' fill='%2312372a'/%3E%3C/svg%3E"><h3>Field tested</h3><p>Prototypes cover ten thousand kilometres before they reach the shelf.</p></li>
+          <li class="card"><img alt="Map and compass" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23e9c46a'/%3E%3Ccircle cx='200' cy='150' r='70' fill='%23264653'/%3E%3C/svg%3E"><h3>Lighter every season</h3><p>We publish the weight of every item and cut grams each year.</p></li>
+        </ul>
+      </div>
+    </section>
+    <section class="social">
+      <div class="container">
+        <h2>From the trail</h2>
+        <!-- what Twitter's widgets.js leaves behind: the rendered tweet lives in an iframe -->
+        <div class="twitter-tweet twitter-tweet-rendered" style="max-width: 550px; margin: 0 auto 48px;">
+          <iframe id="twitter-widget-0" title="X Post" style="width: 100%; height: 190px; border: 1px solid #cfd9de; border-radius: 12px;" srcdoc="&lt;body style='font:15px system-ui;margin:16px;color:#0f1419'&gt;&lt;b&gt;Northwind Outdoor&lt;/b&gt; &lt;span style='color:#536471'&gt;@northwind · May 28&lt;/span&gt;&lt;p&gt;Two hundred nights on the trail this year. Thank you to every guide who tested our kit. 🏔️&lt;/p&gt;&lt;p style='color:#536471'&gt;♡ 1.2K · ↻ 214&lt;/p&gt;&lt;/body&gt;"></iframe>
+        </div>
+      </div>
+    </section>
+    <section class="testimonials">
+      <div class="container">
+        <h2>What guides say</h2>
+        <blockquote>“The only kit I trust above the tree line.” — Mara, alpine guide</blockquote>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">© 2026 Northwind Outdoor. All rights reserved.</footer>
+</body>
+</html>
