@@ -152,17 +152,10 @@ export function issueRow(i, status) {
 const shortTitle = (t, n = 46) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
 /*
- * A pin shared by several issues on one element lists their numbers ("1 · 4 · 7"),
- * the same numbers as in the issue list. Up to 4 are shown; more end with "…"
- * (the tooltip lists them all).
+ * A pin shows one number: the first (most severe) issue on that element. When
+ * several issues share the element, clicking the pin lists them all.
  */
-const PIN_MAX = 4;
-const pinNums = (issues) => {
-  const ns = issues.map((i) => i.n);
-  return ns.length > PIN_MAX ? [...ns.slice(0, PIN_MAX - 1), '…'] : ns;
-};
-const pinLabel = (issues) => pinNums(issues).join('<i class="pin-sep">·</i>');
-const pinWidth = (issues) => Math.max(22, pinNums(issues).join('').length * 8 + (pinNums(issues).length - 1) * 10 + 16);
+const PIN_W = 24;
 
 export class Viewer {
   constructor(root, report, result, onSelect, { onWidthChange } = {}) {
@@ -287,7 +280,7 @@ export class Viewer {
     }
     // clicking empty screenshot area clears the selection
     this.root.querySelectorAll('.canvas').forEach((c) => c.addEventListener('click', (e) => {
-      if (!e.target.closest('.pin, .focus-label')) this.onSelect(null);
+      if (!e.target.closest('.pin, .pin-menu, .focus-label')) this.onSelect(null);
     }));
     this.root.querySelectorAll('.canvas img').forEach((img) => img.addEventListener('load', () => this.drawMarks()));
     if (!this.resizeObs) {
@@ -420,11 +413,10 @@ export class Viewer {
         const placed = [];
         html += this.pinsFor(side).map((raw) => {
           // pins are centred 40% from their left edge: keep the whole pin in the frame
-          const w = pinWidth(raw.issues);
+          const w = PIN_W;
           const p = {
             ...raw, w, x: Math.min(img.clientWidth - w * 0.6 - 2, Math.max(w * 0.4 + 2, raw.x * scale)), y: Math.max(12, raw.y * scale),
           };
-          // overlap is checked with each pin's own width (shared pins are wider)
           const left = (q) => q.x - q.w * 0.4;
           while (placed.some((q) => left(p) < left(q) + q.w + 4 && left(q) < left(p) + p.w + 4 && Math.abs(q.y - p.y) < 22)) p.x += 8;
           placed.push(p);
@@ -432,13 +424,14 @@ export class Viewer {
         }).map((p) => {
           const worst = p.issues.reduce((a, b) => (SEV_RANK[b.severity] > SEV_RANK[a.severity] ? b : a));
           const reviewed = p.issues.every((i) => this.statuses?.[i.id] === 'ok');
-          const title = `${p.issues.length > 1 ? `${p.issues.length} issues on this element. Click to go through them.\n` : ''}${p.issues.map((i) => `${i.n}. ${i.title}`).join('\n')}`;
-          return `<button type="button" class="pin sev-${worst.severity} ${reviewed ? 'approved' : ''}" data-ids="${p.issues.map((i) => esc(i.id)).join(',')}"
-            style="left:${p.x}px;top:${p.y}px" title="${esc(title)}">${pinLabel(p.issues)}</button>`;
+          const many = p.issues.length > 1;
+          const title = many ? `${p.issues.length} issues on this element. Click to list them.` : `${p.issues[0].n}. ${p.issues[0].title}`;
+          return `<button type="button" class="pin sev-${worst.severity} ${reviewed ? 'approved' : ''} ${many ? 'stacked' : ''}" data-ids="${p.issues.map((i) => esc(i.id)).join(',')}"
+            style="left:${p.x}px;top:${p.y}px" title="${esc(title)}" ${many ? 'aria-haspopup="menu"' : ''}>${p.issues[0].n}</button>`;
         }).join('');
       }
       marks.innerHTML = html;
-      // shared pins are wider than estimated at times: measure, and pull them back into the frame
+      // keep pins whole inside the frame
       const frame = marks.getBoundingClientRect();
       marks.querySelectorAll('.pin').forEach((pin) => {
         const r = pin.getBoundingClientRect();
@@ -451,8 +444,38 @@ export class Viewer {
         const ids = pin.dataset.ids.split(',');
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
-          const idx = ids.indexOf(this.selected); // a shared pin cycles through its issues
-          this.onSelect(ids[(idx + 1) % ids.length], 'viewer');
+          if (ids.length === 1) { this.onSelect(ids[0], 'viewer'); return; }
+          // several issues on this element: list them, pick one
+          const open = marks.querySelector('.pin-menu');
+          open?.remove();
+          if (open?.dataset.ids === pin.dataset.ids) return; // a second click closes it
+          const frame2 = marks.getBoundingClientRect();
+          const pr = pin.getBoundingClientRect();
+          const menu = document.createElement('div');
+          menu.className = 'pin-menu';
+          menu.setAttribute('role', 'menu');
+          menu.dataset.ids = pin.dataset.ids;
+          menu.innerHTML = `<p>${ids.length} issues on this element</p>${ids.map((id) => {
+            const i = this.issue(id);
+            return `<button type="button" role="menuitem" class="pm-item sev-${i.severity} ${this.statuses?.[id] === 'ok' ? 'is-ok' : ''}" data-id="${esc(id)}">
+              <span class="pin-ref">${i.n}</span><span class="pm-title">${esc(i.title)}</span></button>`;
+          }).join('')}`;
+          marks.append(menu);
+          // below the pin, flipped left / up when it would leave the frame
+          const mw = menu.offsetWidth;
+          const mh = menu.offsetHeight;
+          let left = pr.left - frame2.left;
+          let top = pr.bottom - frame2.top + 6;
+          if (left + mw > marks.clientWidth - 4) left = Math.max(4, marks.clientWidth - mw - 4);
+          if (top + mh > marks.clientHeight - 4) top = Math.max(4, pr.top - frame2.top - mh - 6);
+          Object.assign(menu.style, { left: `${left}px`, top: `${top}px` });
+          menu.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+          menu.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const item = ev.target.closest('.pm-item');
+            if (item) this.onSelect(item.dataset.id, 'viewer');
+          });
+          menu.querySelector('.pm-item')?.focus();
         });
         pin.addEventListener('pointerdown', (e) => e.stopPropagation());
         pin.addEventListener('mouseenter', () => {

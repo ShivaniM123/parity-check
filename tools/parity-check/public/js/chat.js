@@ -1090,8 +1090,7 @@ async function renderVisual(focus = {}) {
         <select aria-label="Page">${done.map((it) => `<option value="${esc(it.jobId)}" ${it.jobId === report.id ? 'selected' : ''}>${b.data.items.indexOf(it) + 1}. ${esc(itemLabel(b.data.items, it))}</option>`).join('')}</select></label>`
     : `<div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}">
         <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>`}
-      <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
-        <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
+      <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b></button>`).join('')}</nav>
     </div>
     <div class="visual-body"></div>`;
   panel.querySelectorAll('[data-vwidth]').forEach((x) => x.addEventListener('click', () => renderVisual({ width: Number(x.dataset.vwidth) })));

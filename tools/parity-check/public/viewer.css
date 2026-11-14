@@ -61,8 +61,17 @@ kbd { font: 600 10.5px/1 var(--mono); background: #f2f4f7; border: 1px solid var
 .focus-label.words code { border-radius: 8px; line-height: 1.5; padding: 2px 8px; color: var(--text); background: #f2f4f7; }
 .focus-label mark, .cmp mark { background: #fde68a; color: #101828; font-weight: 700; border-radius: 3px; padding: 0 2px; box-shadow: inset 0 -2px 0 #f59e0b; }
 
-/* a pin shared by several issues lists their numbers */
-.pin .pin-sep { font-style: normal; opacity: 0.7; margin: 0 2px; }
+/* a pin shared by several issues: one number, a second pin peeking out behind it */
+.pin.stacked { box-shadow: 3px 3px 0 -1px #fff, 3px 3px 0 1px var(--c), 0 1px 4px rgb(16 24 40 / 30%); }
+
+/* ...and the list of its issues, opened by clicking it */
+.pin-menu { position: absolute; z-index: 6; pointer-events: auto; background: #fff; border-radius: 10px; box-shadow: 0 6px 24px rgb(16 24 40 / 25%); padding: 6px; min-width: 240px; max-width: 340px; }
+.pin-menu p { margin: 2px 6px 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.pm-item { font: inherit; font-size: 12.5px; display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; border: 0; background: none; border-radius: 7px; padding: 6px; cursor: pointer; color: var(--text); line-height: 1.35; }
+.pm-item:hover, .pm-item:focus-visible { background: #f2f4f7; outline: 0; }
+.pm-item .pin-ref { flex: none; }
+.pm-item.is-ok { color: var(--muted); }
+.pm-item.is-ok .pin-ref { background: #98a2b3; }
 
 /* VisBug-style measurement guide */
 .measure { position: absolute; width: 0; border-left: 1.5px solid #d6249f; z-index: 4; pointer-events: none; }

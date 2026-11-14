@@ -47,7 +47,7 @@ async function renderReport(id, params) {
       ${mismatch.extraInMigrated.length ? `It switches layout at <b>${mismatch.extraInMigrated.join(', ')}px</b> instead.` : ''}
       <a class="btn tiny" href="#/?rerun=${esc(report.id)}">Re-run in chat</a></div>` : ''}
     <nav class="tabs">${tabs.map((t) => (t.r
-    ? `<button type="button" data-tab="${t.key}"><b>${t.r.width}px</b><span class="score-pill sm ${scoreClass(t.r.score)}">${t.r.score}</span>${t.r.stats.high ? `<span class="tc high">${t.r.stats.high}</span>` : ''}</button>`
+    ? `<button type="button" data-tab="${t.key}"><b>${t.r.width}px</b></button>`
     : `<button type="button" data-tab="${t.key}" class="aux"><b>${t.key === 'matrix' ? 'Across breakpoints' : 'All fixes'}</b></button>`)).join('')}</nav>
     <section id="tab-body"></section>`;
 
