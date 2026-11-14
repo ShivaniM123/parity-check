@@ -346,3 +346,9 @@ body.route-chat .nav-chat { display: none; }
 /* visual parity: page picker */
 .vh-page { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 36%; margin: 0; }
 .vh-page select { min-width: 0; font-size: 12.5px; padding: 4px 8px; margin: 0; }
+
+/* finished batch: the result card for the selected page, then every page */
+.batch-pages { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.bp-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.bp-head h4 { margin: 0; }
+.bp-head .muted { font-size: 12px; }

@@ -310,6 +310,35 @@ function batchRowMeta(it) {
   }[it.status] || ''}</span>`;
 }
 
+function batchRowsHtml(msg) {
+  const d = msg.data;
+  const { items } = d;
+  return `<ol class="batch-list">${items.map((it, i) => `<li><button type="button" class="brow st-${it.status} ${d.selected && d.selected === it.jobId ? 'on' : ''}" data-action="batch-open" data-mid="${msg.id}" data-i="${i}"
+        title="${esc(it.original)} → ${esc(it.migrated)}" ${it.status === 'done' ? '' : 'aria-disabled="true"'}>
+        <span class="br-n">${i + 1}</span><span class="br-path">${esc(itemLabel(items, it))}</span><span class="br-meta">${batchRowMeta(it)}</span></button></li>`).join('')}</ol>`;
+}
+
+/**
+ * A finished batch: the same "Comparison complete" card as one page, for the
+ * selected page, with every page listed below to switch between them.
+ */
+async function batchResultHtml(msg) {
+  const d = msg.data;
+  const { items } = d;
+  const ok = items.filter((it) => it.status === 'done' && it.summary);
+  const sel = ok.find((it) => it.jobId === d.selected) || ok[0];
+  const report = await loadReport(sel.jobId);
+  const at = items.indexOf(sel) + 1;
+  const failed = items.length - ok.length;
+  return `<p class="sum-intro">I've compared the ${items.length} pages. Here's the result:</p>
+  <div class="card-msg summary batch-result">
+    ${resultBodyHtml(report, `Page ${at} of ${items.length}: here's how it matches, and what needs attention.`)}
+    <div class="batch-pages">
+      <div class="bp-head"><h4>All pages</h4><span class="muted">${ok.length} compared${failed ? ` · ${failed} not compared` : ''} · click a page to show it above</span></div>
+      ${batchRowsHtml(msg)}
+    </div></div>`;
+}
+
 function batchHtml(msg) {
   const d = msg.data;
   const { items } = d;
@@ -341,9 +370,7 @@ function batchHtml(msg) {
   return `<div class="card-msg batch-msg">
     <div class="progress-top"><b>${title}</b><span class="muted">${sub}</span></div>
     ${running ? `<div class="progress"><span style="width:${Math.max(2, Math.round((part / n) * 100))}%"></span></div>` : ''}
-    <ol class="batch-list">${items.map((it, i) => `<li><button type="button" class="brow st-${it.status} ${d.selected && d.selected === it.jobId ? 'on' : ''}" data-action="batch-open" data-mid="${msg.id}" data-i="${i}"
-        title="${esc(it.original)} → ${esc(it.migrated)}" ${it.status === 'done' ? '' : 'aria-disabled="true"'}>
-        <span class="br-n">${i + 1}</span><span class="br-path">${esc(itemLabel(items, it))}</span><span class="br-meta">${batchRowMeta(it)}</span></button></li>`).join('')}</ol>
+    ${batchRowsHtml(msg)}
     <div class="actions">
       ${running && queued ? `<button type="button" class="btn ghost" data-action="batch-stop" data-mid="${msg.id}" title="Pages still waiting are skipped; the ones running now finish">${d.parallel > 1 ? 'Stop after the running pages' : 'Stop after this page'}</button>` : ''}
       ${ok.length ? '<span class="muted br-hint">Click a page to see its issues and copy its prompt for AEM Coder.</span>' : ''}
@@ -351,7 +378,7 @@ function batchHtml(msg) {
 }
 
 /** Shows one page of a batch: the right panel (or a summary card on small screens) and Visual parity. */
-function openBatchItem(msg, it, { announce = true, width = null } = {}) {
+function openBatchItem(msg, it, { width = null } = {}) {
   if (!it || it.status !== 'done') return;
   msg.data.selected = it.jobId;
   state.reportId = it.jobId;
@@ -359,8 +386,6 @@ function openBatchItem(msg, it, { announce = true, width = null } = {}) {
   state.visualWidth = width; // a width the page wasn't tested at falls back to its first
   update(msg);
   renderResult(true); // eslint-disable-line no-use-before-define
-  const panelHidden = !root.querySelector('.side-result')?.offsetParent;
-  if (announce && panelHidden && !state.visual) add('bot', 'summary', { reportId: it.jobId });
   if (state.visual) renderVisual(); // eslint-disable-line no-use-before-define
 }
 
@@ -371,7 +396,7 @@ function finishBatch(msg) {
   d.status = 'done';
   d.ended = Date.now();
   const ok = d.items.filter((it) => it.status === 'done').length;
-  update(msg);
+  update(msg).then(scrollDown); // the card grows into the full result
   setTitle(`✓ ${ok} of ${d.items.length} pages compared`);
   if (document.hasFocus()) setTimeout(() => setTitle(''), 4000);
   refreshRecent(); // eslint-disable-line no-use-before-define
@@ -402,7 +427,7 @@ function watchBatch(msg) {
     if (e.type === 'status') {
       Object.assign(it, { status: e.status, error: e.error, summary: e.summary || it.summary });
       // the first finished page opens in the summary panel, so reviewing can start while the rest runs
-      if (e.status === 'done' && !d.selected && state.batchId === msg.id) openBatchItem(msg, it, { announce: false });
+      if (e.status === 'done' && !d.selected && state.batchId === msg.id) openBatchItem(msg, it);
       // the summary panel's page arrows count the finished pages
       else if (e.status === 'done' && state.batchId === msg.id && d.selected === state.reportId) renderResult(true); // eslint-disable-line no-use-before-define
     }
@@ -569,15 +594,14 @@ const pageBox = (cls, label, url) => `<a class="page-box ${cls}" href="${esc(url
   <span class="pb-lbl">${label}</span><span class="pb-url"><span>${esc(url)}</span>${ICON.ext}</span></a>`;
 
 /** The result card in the chat: what was compared and how well it matches. Issues live in the right panel. */
-function summaryHtml(report) {
+/** The result card's content for one page; a batch shows it for the selected page. */
+function resultBodyHtml(report, subtitle = 'Here\'s how your pages match, and what needs attention.') {
   const s = report.summary;
   const top = topIssues(report, 5);
-  return `<p class="sum-intro">I've compared the pages. Here's the result:</p>
-  <div class="card-msg summary">
-    <div class="sum-top">
+  return `<div class="sum-top">
       <div class="sum-main">
         <div class="sum-title"><span class="ok-badge">${ICON.check}</span>
-          <div><h3>Comparison complete</h3><p>Here's how your pages match, and what needs attention.</p></div></div>
+          <div><h3>Comparison complete</h3><p>${subtitle}</p></div></div>
         <div class="sum-pages">${pageBox('o', 'Original page', report.original)}<span class="swap" aria-hidden="true">${ICON.swap}</span>${pageBox('m', 'Migrated page', report.migrated)}</div>
       </div>
       <div class="sum-score">
@@ -587,8 +611,8 @@ function summaryHtml(report) {
       </div>
     </div>
     <div class="sum-foot">
-      <div class="width-chips"><span class="muted">Widths</span>${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}">
-        <b>${r.width}px</b><span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span>${r.stats.high ? `<span class="tc high">${r.stats.high}</span>` : ''}</button>`).join('')}</div>
+      <div class="width-chips"><span class="muted">Widths</span>${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}" title="Show visual parity at ${r.width}px">
+        <b>${r.width}px</b></button>`).join('')}</div>
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
     </div>
     ${mismatchHtml(report)}
@@ -600,7 +624,12 @@ function summaryHtml(report) {
         <button type="button" class="btn ghost" data-action="say" data-text="Show all fixes">All fixes</button>
         <button type="button" class="btn ghost" data-action="new-chat">Run new comparison</button>
       </div>
-    </div></div>`;
+    </div>`;
+}
+
+function summaryHtml(report) {
+  return `<p class="sum-intro">I've compared the pages. Here's the result:</p>
+  <div class="card-msg summary">${resultBodyHtml(report)}</div>`;
 }
 
 function issuesHtml(report, f) {
@@ -712,7 +741,8 @@ async function bodyFor(msg) {
     case 'setup': return setupHtml(msg);
     case 'form': return formHtml(msg);
     case 'progress': return progressHtml(msg);
-    case 'batch': return batchHtml(msg);
+    case 'batch':
+      return msg.data.status === 'done' && msg.data.items.some((it) => it.status === 'done' && it.summary) ? batchResultHtml(msg) : batchHtml(msg);
     case 'summary': return summaryHtml(await loadReport(d.reportId));
     case 'issues': return issuesHtml(await loadReport(d.reportId), d.filter);
     case 'issue': {
@@ -1056,9 +1086,9 @@ async function renderVisual(focus = {}) {
   const done = (b?.data.items || []).filter((it) => it.status === 'done' && it.summary);
   const inBatch = done.some((it) => it.jobId === report.id);
   panel.innerHTML = `<div class="visual-head">
-      ${inBatch ? `<label class="vh-page" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
+      ${inBatch ? `<label class="vh-page" title="${esc(report.original)} → ${esc(report.migrated)}">
         <select aria-label="Page">${done.map((it) => `<option value="${esc(it.jobId)}" ${it.jobId === report.id ? 'selected' : ''}>${b.data.items.indexOf(it) + 1}. ${esc(itemLabel(b.data.items, it))}</option>`).join('')}</select></label>`
-    : `<div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}"><span class="score-pill sm ${scoreClass(report.summary.score)}">${report.summary.score}</span>
+    : `<div class="vh-urls" title="${esc(report.original)} → ${esc(report.migrated)}">
         <span>${esc(hostOf(report.original))} → ${esc(hostOf(report.migrated))}</span></div>`}
       <nav class="tabs">${report.results.map((r) => `<button type="button" data-vwidth="${r.width}" class="${r.width === result.width ? 'on' : ''}"><b>${r.width}px</b>
         <span class="score-pill sm ${scoreClass(r.score)}">${r.score}</span></button>`).join('')}</nav>
@@ -1067,7 +1097,7 @@ async function renderVisual(focus = {}) {
   panel.querySelectorAll('[data-vwidth]').forEach((x) => x.addEventListener('click', () => renderVisual({ width: Number(x.dataset.vwidth) })));
   panel.querySelector('.vh-page select')?.addEventListener('change', (e) => {
     // stay at the same width on the next page
-    openBatchItem(b, done.find((it) => it.jobId === e.target.value), { announce: false, width: state.visualWidth });
+    openBatchItem(b, done.find((it) => it.jobId === e.target.value), { width: state.visualWidth });
   });
   workspace = mountWorkspace(panel.querySelector('.visual-body'), report, result, {
     focusId: focus.issueId, onWidthChange: (w) => renderVisual({ width: w }),
@@ -1439,7 +1469,7 @@ function onAction(e) {
     const done = (b?.data.items || []).filter((it) => it.status === 'done');
     const at = done.findIndex((it) => it.jobId === state.reportId);
     const next = done[(at + Number(el.dataset.dir) + done.length) % done.length];
-    if (next) openBatchItem(b, next, { announce: false });
+    if (next) openBatchItem(b, next);
   }
   if (action === 'batch-stop' && msg) {
     el.disabled = true;
