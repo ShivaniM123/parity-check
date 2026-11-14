@@ -582,19 +582,13 @@ function topIssues(report, n) {
     .slice(0, n);
 }
 
-function mismatchHtml(report, cls = '') {
-  const mm = report.breakpointMismatch;
-  if (!mm || !(mm.missingInMigrated.length || mm.extraInMigrated.length)) return '';
-  return `<p class="note-warn ${cls}"><b>Breakpoints don't match.</b>
-    ${mm.missingInMigrated.length ? `The migrated CSS has no media query at ${mm.missingInMigrated.join(', ')}px.` : ''}
-    ${mm.extraInMigrated.length ? `It switches layout at ${mm.extraInMigrated.join(', ')}px instead.` : ''}</p>`;
-}
-
 const pageBox = (cls, label, url) => `<a class="page-box ${cls}" href="${esc(url)}" target="_blank" rel="noopener" title="${esc(url)}">
   <span class="pb-lbl">${label}</span><span class="pb-url"><span>${esc(url)}</span>${ICON.ext}</span></a>`;
 
-/** The result card in the chat: what was compared and how well it matches. Issues live in the right panel. */
-/** The result card's content for one page; a batch shows it for the selected page. */
+/**
+ * The result card in the chat: what was compared and how well it matches
+ * (issues live in the right panel). A batch shows it for the selected page.
+ */
 function resultBodyHtml(report, subtitle = 'Here\'s how your pages match, and what needs attention.') {
   const s = report.summary;
   const top = topIssues(report, 5);
@@ -611,11 +605,8 @@ function resultBodyHtml(report, subtitle = 'Here\'s how your pages match, and wh
       </div>
     </div>
     <div class="sum-foot">
-      <div class="width-chips"><span class="muted">Widths</span>${report.results.map((r) => `<button type="button" class="wchip" data-action="visual" data-report="${esc(report.id)}" data-width="${r.width}" title="Show visual parity at ${r.width}px">
-        <b>${r.width}px</b></button>`).join('')}</div>
       <button type="button" class="btn primary" data-action="visual" data-report="${esc(report.id)}">Show visual parity</button>
     </div>
-    ${mismatchHtml(report)}
     <div class="sum-narrow">
       ${top.length ? `<h4>Top issues</h4><div class="issue-lines">${top.map((i) => issueLine(i)).join('')}</div>` : '<p>No issues. 🎉</p>'}
       <div class="actions">

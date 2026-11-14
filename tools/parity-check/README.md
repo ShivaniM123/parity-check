@@ -2,7 +2,7 @@
 
 Compare an **original page** with its **migrated AEM Edge Delivery Services page** at the site's breakpoints. Parity Check lists every visible difference (layout, spacing, typography, colour, images, content) on side-by-side screenshots, and turns them into a PDF report or a prompt for AEM Coder.
 
-It runs on your machine, with no AI service. Only the two pages you compare are loaded.
+It runs on your machine, with no AI service. Only the pages you compare are loaded.
 
 ## Start the tool
 
@@ -44,23 +44,28 @@ Breakpoints and ignored elements are remembered per site.
 3. To list only the original URLs, fill in **Migrated site** (e.g. `https://main--site--org.aem.page`). Each page gets the same path there, without `.html`.
 4. Your breakpoints apply to every page. Leave them empty to use each site's saved breakpoints, or detect them from that site's first page.
 
-Up to 100 pages per run. Lists of up to 5 pages run one after another; longer lists run **3 pages at a time**, roughly 3× faster. Each page still captures its widths one by one, in its own browser. A single comparison started during a batch waits for it, then runs alone. The batch card shows each page's progress, then its score and High count. **Stop** skips the pages still waiting; the ones already running finish. Click a page to open its summary; use ‹ › in the summary panel or the page list in **Visual parity** to move between pages. **Copy for AEM Coder** in the summary panel copies the prompt for the selected page only.
+Up to 100 pages per run. Lists of up to 5 pages run one after another; longer lists run **3 pages at a time**, roughly 3× faster. Each page still captures its widths one by one, in its own browser. A single comparison started during a batch waits for it, then runs alone. While it runs, the card shows each page's progress, then its score and High count. **Stop** skips the pages still waiting; the ones already running finish.
+
+When it's done, you get the same **Comparison complete** card as for one page, for the selected page, with **All pages** listed below. Click a page there to show it in the card. The summary panel's ‹ › and the page list in **Visual parity** switch pages too, and all three stay in step. **Copy for AEM Coder** copies the prompt for the selected page only.
 
 Pasting three or more URLs into the chat box fills this list for you.
 
 ## Use the results
 
-- **Comparison summary** (right panel): score, High / Medium / Low counts, top issues, and quick actions.
-- **Chat | Visual parity** (top bar): switch between the conversation and both pages side by side, with each issue pinned and highlighted. The panes scroll together section by section.
+- **Comparison complete** (chat): the two pages, the parity score (0–100, higher is closer) with High / Medium / Low counts, and **Show visual parity**.
+- **Comparison summary** (right panel): High / Medium / Low counts, top issues, and quick actions.
+- **Chat | Visual parity** (top bar): switch between the conversation and both pages side by side, with each issue pinned and highlighted. The panes scroll together section by section. Pick a width with the tabs at the top.
+- **Pins:** each pin shows one issue number. A pin with a second pin peeking out behind it has several issues on the same element: click it to list them, then pick one.
+- **Wording issues** name the exact words, e.g. *Wording: "hosts" → "host"; extra "2" at the end*. The changed words are highlighted on both screenshots.
 - **Review:** mark each issue **Needs fix** (`F`) or **Approve** (`A`) if the difference is intended. Use `←` `→` to move between issues.
 - **Copy for AEM Coder:** copies a ready prompt with every open issue (element, original and migrated values, widths). Paste it into AEM Coder; approved issues are left out.
 - **Download report:** a PDF with every issue, close-ups and suggested CSS.
 
-You can also ask in the chat, e.g. `show high issues`, `what's wrong on mobile?`, `issue #3 at 375`, `re-run`, `history`.
+You can also ask in the chat, e.g. `show high issues`, `what's wrong on mobile?`, `issue #3 at 375`, `breakpoints` (the original's and the migrated page's breakpoints, and where they differ), `re-run`, `history`.
 
 ## What it checks
 
-Missing, extra or changed content · columns per row · spacing · font family, size, weight, line height, letter spacing, casing, alignment · text and background colour · buttons · image size and crop · elements hidden or shown per width · social embeds · failed fonts and requests.
+Missing, extra or changed content, with the exact words that changed · columns per row · spacing · font family, size, weight, line height, letter spacing, casing, alignment · text and background colour · buttons · image size and crop · elements hidden or shown per width · social embeds · failed fonts and requests.
 
 Content is matched by what it says, not by where it sits. So moved sections, and elements built differently but looking the same, aren't reported as missing.
 
@@ -76,5 +81,6 @@ On a new site, check the first few pages' issues in **Visual parity**, add noisy
 | --- | --- |
 | `Cannot find package 'playwright'` | Run `npm install` in `tools/parity-check`. |
 | No browser / `Executable doesn't exist` | Run `npx playwright install chromium`. |
+| Still the old layout after restarting | Restarting doesn't download new code. Update your copy from the branch first, then run `npm start` and reload the tool's tab. |
 | Old issues after an update | Restart the tool and re-run. Old reports keep their results. |
 | A cookie banner or chat bubble is flagged | Add its selector to **Ignore elements**. |

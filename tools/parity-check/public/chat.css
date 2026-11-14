@@ -104,9 +104,6 @@ body.route-chat .nav-chat { display: none; }
 .step.ok::before { content: '✓'; color: var(--good); font-weight: 700; }
 .msg.bot .msg-body > .done-line { margin: 0; font-size: 12.5px; color: var(--muted); }
 
-.width-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.wchip { font: inherit; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: #fff; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
-.wchip:hover { border-color: var(--accent); background: #fafbff; }
 
 /* issue lines */
 .issue-lines { display: flex; flex-direction: column; }
@@ -254,10 +251,7 @@ body.route-chat .nav-chat { display: none; }
 .sev-legend .high b { background: var(--high-soft); color: var(--high); }
 .sev-legend .medium b { background: var(--medium-soft); color: var(--medium); }
 .sev-legend .low b { background: #ecfdf3; color: var(--good); }
-.sum-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
-.sum-foot .width-chips { margin: 0; align-items: center; }
-.sum-foot .width-chips .muted { font-size: 12.5px; margin-right: 2px; }
-.card-msg.summary .note-warn { margin: 14px 0 0; }
+.sum-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .sum-narrow { margin-top: 14px; }
 .sum-narrow h4 { margin: 0 0 6px; }
 @media (width < 1180px) {
